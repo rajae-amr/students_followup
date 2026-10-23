@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // حزم workspace تحوّل من المصدر مباشرة
   transpilePackages: ["@app/db", "@app/core", "@app/auth", "@app/ui"],
-  // خدمات الخادم تعمل على Node.js runtime (Prisma وpg)
-  serverExternalPackages: ["@prisma/client", "pg", "pg-boss", "exceljs"],
+  // خدمات الخادم تعمل على Node.js runtime
+  serverExternalPackages: ["@prisma/client", "exceljs"],
   async headers() {
     return [
       {

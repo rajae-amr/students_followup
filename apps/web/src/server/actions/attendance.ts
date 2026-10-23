@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import {
   clearAttendance,
@@ -13,6 +14,7 @@ import {
   StateError,
   type LessonAttendance,
 } from "@app/core";
+import { drainOutbox } from "@/lib/jobs/drain";
 import { requireActor } from "../session";
 
 export type ActionResult =
@@ -37,6 +39,8 @@ export async function markStudent(input: {
   try {
     const actor = await requireActor();
     await recordAttendance(actor, input);
+    // تنبيهات الغياب الآلية قد تُدرج داخل recomputeDaily — أرسلها فوراً
+    after(() => drainOutbox(10));
     revalidatePath(`/teacher/session/${input.sessionId}`);
     return { ok: true };
   } catch (e) {
@@ -78,6 +82,7 @@ export async function submitSessionAction(
   try {
     const actor = await requireActor();
     await submitSession(actor, sessionId);
+    after(() => drainOutbox(10));
     revalidatePath(`/teacher/session/${sessionId}`);
     revalidatePath("/teacher");
     return { ok: true };

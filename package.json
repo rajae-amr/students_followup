@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @app/web",
-    "dev:worker": "npm run dev -w @app/worker",
+    "poll:telegram": "tsx scripts/telegram-poll.ts",
     "build": "npm run build -w @app/web",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -26,5 +26,8 @@
   "dependencies": {
     "generator-function": "^2.0.1",
     "is-generator-function": "^1.1.2"
+  },
+  "devDependencies": {
+    "tsx": "4.19.2"
   }
 }

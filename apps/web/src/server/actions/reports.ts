@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import {
   buildStudentReport,
   createReportSnapshot,
@@ -10,6 +11,7 @@ import {
   type StudentReportContent,
 } from "@app/core";
 import { prisma } from "@app/db";
+import { drainOutbox } from "@/lib/jobs/drain";
 import { requireRole } from "../session";
 
 export type ReportResult =
@@ -63,6 +65,8 @@ export async function sendReport(
   try {
     const actor = await requireRole("admin");
     const res = await queueReportDelivery(actor, { reportSnapshotId });
+    // إرسال فوري في الخلفية — الفاشل يُعاد عبر /api/cron/sweep
+    after(() => drainOutbox(30));
     revalidatePath("/admin/reports");
     return { ok: true, queued: res.queued };
   } catch (e) {
@@ -96,7 +100,8 @@ export async function retryOutboxEvent(
       data: { status: "pending", nextAttemptAt: new Date(), lastError: null },
     });
     revalidatePath("/admin/reports");
-    return { ok: true, message: "أُعيدت الجدولة — سيحاول العامل الإرسال قريباً" };
+    after(() => drainOutbox(10));
+    return { ok: true, message: "أُعيدت الجدولة — سيُحاول الإرسال فوراً" };
   } catch {
     return { ok: false, error: "تعذرت إعادة الجدولة" };
   }

@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "@app/db";
+import { drainOutbox } from "@/lib/jobs/drain";
 import { createInvitation, auth, createGuardianAccount, createTeacherAccount, generatePassword } from "@app/auth";
 import { generateWeeklyDigests } from "@app/core";
 import { hashPassword } from "better-auth/crypto";
@@ -870,9 +872,10 @@ export async function runWeeklyDigest(): Promise<Result> {
     if (res.skippedNoCalendar)
       return fail("التقويم غير مهيأ — اضبط الفصول أو أيام التقويم أولاً في الإعدادات");
     if (!res.queued) return fail("لا أولياء أمور موثقين مرتبطين بطلاب");
+    after(() => drainOutbox(50));
     return {
       ok: true,
-      message: `أُدرج ${res.queued} تلخيصاً (${res.students} طالباً، ${res.rangeStart} → ${res.rangeEnd})`,
+      message: `أُدرج ${res.queued} تلخيصاً وجارٍ إرسالها (${res.students} طالباً، ${res.rangeStart} → ${res.rangeEnd})`,
     };
   } catch {
     return fail("تعذر تشغيل التلخيص");
@@ -944,7 +947,8 @@ export async function sendAbsenceAlert(formData: FormData): Promise<Result> {
       });
       queued++;
     }
-    return { ok: true, message: `أُدرج ${queued} تنبيهاً للإرسال` };
+    after(() => drainOutbox(10));
+    return { ok: true, message: `أُدرج ${queued} تنبيهاً وجارٍ إرسالها` };
   } catch {
     return fail("تعذر إرسال التنبيه");
   }

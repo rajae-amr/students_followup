@@ -2,11 +2,15 @@
  * استقبال تحديثات تيليجرام من webhook:
  * 1. يتحقق من الترويسة السرية (TELEGRAM_WEBHOOK_SECRET)
  * 2. يخزّن التحديث خاماً في TelegramUpdateInbox (update_id فريد — لا معالجة مكررة)
- * 3. يرد 200 فوراً — المعالجة الفعلية في العامل الخلفي
+ * 3. يرد 200 فوراً ثم يعالج التحديث ويمسح Outbox عبر after()
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { prisma } from "@app/db";
+import { processTelegramUpdate } from "@/lib/jobs/telegramInbox";
+import { drainOutbox } from "@/lib/jobs/drain";
+
+export const maxDuration = 60;
 
 const MAX_BODY = 100_000; // 100KB — حمولة رسالة تيليجرام كافية
 
@@ -31,10 +35,25 @@ export async function POST(request: Request) {
     return new NextResponse("bad request", { status: 400 });
   }
 
-  await prisma.telegramUpdateInbox.upsert({
+  const inbox = await prisma.telegramUpdateInbox.upsert({
     where: { updateId: update.update_id },
     create: { updateId: update.update_id, payload: JSON.parse(text) },
     update: {},
+  });
+
+  // معالجة فورية بعد الرد — أوامر البوت قد تولّد أحداث إرسال (تقرير عند الطلب،
+  // تنبيه غياب آلي داخل recomputeDaily) فنمسحها في نفس المهمة.
+  after(async () => {
+    try {
+      await processTelegramUpdate(inbox.id);
+    } catch (err) {
+      console.error("[webhook] فشل معالجة التحديث:", err);
+    }
+    try {
+      await drainOutbox(10);
+    } catch (err) {
+      console.error("[webhook] فشل مسح Outbox:", err);
+    }
   });
 
   return new NextResponse("ok");

@@ -1,69 +1,71 @@
 # نظام المتابعة — Next.js
 
-تطبيق ويب متكامل لمتابعة الطلاب: حضور، سلوك، درجات، تقييمات أسبوعية، تقارير أولياء الأمور، وتكامل تيليجرام.
+تطبيق ويب متكامل لمتابعة الطلاب: حضور، سلوك، درجات، تقييمات أسبوعية، تقارير أولياء الأمور، وبوت تيليجرام — **كل شيء يعمل داخل تطبيق Next.js واحد على Vercel**.
 
 ## البنية
 
 ```
-apps/web        تطبيق Next.js (App Router) — الواجهات + API + webhook تيليجرام
-apps/worker     عامل منفصل — pg-boss: إرسال التقارير، صندوق تيليجرام، التقارير الأسبوعية
-packages/db     Prisma + PostgreSQL (المخطط والترحيلات والبذور)
+apps/web        تطبيق Next.js — الواجهات + API + بوت تيليجرام + الإرسال + cron
+  src/lib/jobs  منطق المهام: إرسال التقارير/التنبيهات، معالجة البوت، التلخيص
+packages/db     Prisma + PostgreSQL (المخطط والترحيلات)
 packages/core   منطق العمل المشترك (الحضور، التقارير، التلخيص، التقييمات)
 packages/auth   Better Auth + إنشاء الحسابات (معلم/ولي)
 packages/ui     مكوّنات واجهة مشتركة
+scripts/        telegram-poll.ts (محلي) + seed/bootstrap
 tools/          أدوات ترحيل البيانات القديمة (SQLite → PostgreSQL)
 tests/          اختبارات الوحدة (vitest)
 ```
+
+## تدفق الرسائل (بدون عامل منفصل)
+
+- **webhook تيليجرام** يخزّن التحديث ثم يعالجه فوراً عبر `after()` — أوامر المعلم والولي
+- **إرسال مباشر**: اعتماد تقرير / تنبيه غياب / تلخيص يدوي → `after(() => drainOutbox())`
+- **`/api/cron/sweep`** (يومي + يمكن نداؤه خارجياً كل دقيقة): إعادة محاولة المتعثر
+- **`/api/cron/weekly`** (الجمعة 15:00 مسقط): التقارير الأسبوعية المجمعة
 
 ## التشغيل المحلي
 
 ```bash
 npm install
-cp .env.example apps/web/.env        # املأ القيم
-cp apps/worker/.env.example apps/worker/.env
+cp apps/web/.env.example apps/web/.env   # املأ القيم
 npm run db:generate && npm run db:migrate
 
-npm run dev          # الويب على http://localhost:3000
-npm run dev:worker   # العامل (طرفية ثانية)
+npm run dev              # http://localhost:3000
+npm run poll:telegram    # طرفية ثانية — اختبار البوت محلياً
 ```
 
-## متغيرات البيئة
+## متغيرات البيئة (`apps/web/.env`)
 
-| المتغير | web | worker | الملاحظة |
-|---|---|---|---|
-| `DATABASE_URL` | ✅ | ✅ | PostgreSQL — رابط مُدار pooling في الإنتاج |
-| `DIRECT_URL` | ✅ | — | اتصال مباشر لـPrisma (migrations) |
-| `WORKER_DATABASE_URL` | — | ⬜ | اختياري — يتجاوز `DATABASE_URL` للعامل |
-| `BETTER_AUTH_SECRET` | ✅ | ✅ | 32+ حرفاً — **نفس القيمة في الخدمتين** |
-| `BETTER_AUTH_URL` | ✅ | ✅ | عنوان الموقع العام |
-| `SCHOOL_NAME` / `SCHOOL_TIMEZONE` | ✅ | — | Asia/Muscat |
-| `TELEGRAM_BOT_TOKEN` | — | ✅ | من BotFather |
-| `TELEGRAM_BOT_USERNAME` | ✅ | ⬜ | يظهر في قسائم الحسابات المطبوعة |
-| `TELEGRAM_WEBHOOK_SECRET` | ✅ | — | **إلزامي للإنتاج** — بدونه كل تحديثات الـwebhook تُرفض 403 |
-| `TELEGRAM_POLL` | — | ⬜ | `true` للتطوير المحلي فقط |
-| `REPORTS_CRON_ENABLED` / `REPORTS_CRON` | — | ✅ | الافتراضي `0 15 * * 5` (الجمعة 15:00) |
+| المتغير | الملاحظة |
+|---|---|
+| `DATABASE_URL` | PostgreSQL — رابط pooling في الإنتاج |
+| `DIRECT_URL` | اتصال مباشر لـPrisma (migrations) |
+| `BETTER_AUTH_SECRET` | 32+ حرفاً |
+| `BETTER_AUTH_URL` | عنوان الموقع العام (`https://...` في الإنتاج) |
+| `SCHOOL_NAME` / `SCHOOL_TIMEZONE` | Asia/Muscat |
+| `TELEGRAM_BOT_TOKEN` | من BotFather |
+| `TELEGRAM_BOT_USERNAME` | يظهر في قسائم الحسابات المطبوعة |
+| `TELEGRAM_WEBHOOK_SECRET` | **إلزامي للإنتاج** — بدونه الـwebhook يرفض كل شيء 403 |
+| `CRON_SECRET` | يحمي `/api/cron/*` — Vercel Cron يرسله تلقائياً |
 
-## النشر
+## النشر — Vercel فقط
 
-### الويب → Vercel
-- Root Directory: `next-app/apps/web` — يتعرف Vercel على workspaces تلقائياً عبر `package-lock.json`
-- عيّن متغيرات عمود `web` أعلاه في Project Settings → Environment Variables
-- شغّل الترحيلات على قاعدة الإنتاج مرة واحدة: `npm run db:migrate` (مع `DATABASE_URL`/`DIRECT_URL` للإنتاج)
-
-### العامل → خدمة منفصلة (Railway/Fly/VPS…)
-- **لا يُنشر على Vercel** — عملية طويلة الأمد
-- `npm install && npm run build -w @app/worker && node apps/worker/dist/index.cjs`
-- عيّن متغيرات عمود `worker`
-
-### تيليجرام — الإنتاج
-```bash
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
-  -d "url=https://<DOMAIN>/api/telegram/webhook" \
-  -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
-```
+1. Root Directory: `apps/web` — يتعرف على workspaces تلقائياً
+2. عيّن متغيرات الجدول أعلاه في Environment Variables
+3. الترحيلات على قاعدة الإنتاج: `npm run db:migrate` (بـ`DATABASE_URL`/`DIRECT_URL` للإنتاج)
+4. **Cron**: `vercel.json` داخل `apps/web` مجدول تلقائياً:
+   - `/api/cron/weekly` — الجمعة 11:00 UTC (15:00 مسقط)
+   - `/api/cron/sweep` — يومياً 05:00 UTC (إعادة محاولات)
+   - لإعادة محاولة أسرع: خدمة مجانية (cron-job.org) تنادي `/api/cron/sweep?secret=<CRON_SECRET>` كل دقيقة
+5. **webhook تيليجرام**:
+   ```bash
+   curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+     -d "url=https://<DOMAIN>/api/telegram/webhook" \
+     -d "secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+   ```
 
 ### الشعار
-ضع `apps/web/public/logo.png` — يظهر تلقائياً في الترويسة والقسائم (بديل: شارة الأحرف الأولى).
+ضع `apps/web/public/logo.png` — يظهر تلقائياً في الترويسة والقسائم.
 
 ## أوامر مفيدة
 
