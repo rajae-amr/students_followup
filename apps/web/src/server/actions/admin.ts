@@ -738,6 +738,47 @@ export async function toggleUser(formData: FormData): Promise<Result> {
   }
 }
 
+/** تعديل بيانات معلم/إداري — الاسم والهاتف (مفتاح ربط البوت) والمادة الافتراضية */
+export async function updateStaffUser(formData: FormData): Promise<Result> {
+  try {
+    await requireRole("admin");
+    const userId = String(formData.get("userId") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    const phone = String(formData.get("phone") ?? "").trim() || null;
+    const defaultSubject = String(formData.get("defaultSubject") ?? "").trim() || null;
+    if (!userId || !name) return fail("الاسم مطلوب");
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, phone: true },
+    });
+    if (!user || user.role === "guardian") return fail("المستخدم غير موجود");
+
+    // الرقم مفتاح ربط البوت — تغيّره يفسخ الربط القديم ليعيد المعلم الربط بالرقم الجديد
+    const phoneChanged = (user.phone ?? null) !== phone;
+    await prisma.user.update({
+      where: { id: userId },
+      data: { name, phone, ...(phoneChanged ? { telegramChatId: null } : {}) },
+    });
+    if (user.role === "teacher") {
+      await prisma.teacherProfile.upsert({
+        where: { userId },
+        create: { userId, defaultSubject },
+        update: { defaultSubject },
+      });
+    }
+    revalidatePath("/admin/users");
+    return {
+      ok: true,
+      message: phoneChanged
+        ? "حُفظت البيانات — فُكّ ربط تيليجرام لتغيّر الرقم، وسيعيد المعلم ربطه"
+        : "حُفظت بيانات المستخدم",
+    };
+  } catch {
+    return fail("تعذر حفظ البيانات");
+  }
+}
+
 /** إعادة تعيين كلمة مرور مستخدم — تُعرض مرة واحدة للإدارة */
 export async function resetUserPassword(formData: FormData): Promise<Result> {
   try {

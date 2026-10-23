@@ -20,6 +20,15 @@ import { teacherByChat, handleTeacherText, handleTeacherCallback } from "./teach
 
 const SYSTEM_ACTOR: Actor = { userId: "system", role: "admin", isActive: true };
 
+/** زر مشاركة جهة الاتصال — يظهر لغير المرتبطين لتسهيل الربط */
+const CONTACT_KEYBOARD = {
+  reply_markup: {
+    keyboard: [[{ text: "📱 مشاركة جهة اتصالي", request_contact: true }]],
+    resize_keyboard: true,
+    one_time_keyboard: true,
+  },
+};
+
 interface TgMessage {
   message_id: number;
   chat: { id: number };
@@ -88,9 +97,10 @@ export async function processTelegramUpdate(inboxId: string): Promise<void> {
           await api.sendMessage(
             chatId,
             "مرحباً بك في نظام متابعة الطلاب.\n" +
-            "• لربط حسابك: شارك جهة اتصالك الموثقة لدى المدرسة.\n" +
+            "• لربط حسابك: اضغط زر «مشاركة جهة اتصالي» بالأسفل.\n" +
             "• /status لحالة الربط — /stop لإلغائه.\n" +
             "• أرسل اسم ابنك/ابنتك لطلب تقرير آخر 7 أيام.",
+            CONTACT_KEYBOARD,
           );
         }
       } else if (text.startsWith("/status")) {
@@ -140,7 +150,11 @@ async function sendStatus(msg: TgMessage) {
   const api = botApi();
   const g = await guardianByChat(msg!.chat.id);
   if (!g) {
-    await api.sendMessage(msg!.chat.id, "المحادثة غير مرتبطة. شارك جهة اتصالك الموثقة لدى المدرسة.");
+    await api.sendMessage(
+      msg!.chat.id,
+      "المحادثة غير مرتبطة. اضغط «مشاركة جهة اتصالي» بالأسفل لربط حسابك.",
+      CONTACT_KEYBOARD,
+    );
     return;
   }
   const kids = g.children.map((c) => `• ${c.student.fullName}`).join("\n");
@@ -169,7 +183,11 @@ async function reportOnDemand(msg: TgMessage) {
   const api = botApi();
   const g = await guardianByChat(msg!.chat.id);
   if (!g) {
-    await api.sendMessage(msg!.chat.id, "المحادثة غير مرتبطة بولي أمر موثق. شارك جهة اتصالك أولاً.");
+    await api.sendMessage(
+      msg!.chat.id,
+      "المحادثة غير مرتبطة بولي أمر موثق. اضغط «مشاركة جهة اتصالي» بالأسفل لربط حسابك.",
+      CONTACT_KEYBOARD,
+    );
     return;
   }
   const q = msg!.text!.trim().replace(/\s+/g, " ");
@@ -235,9 +253,20 @@ async function reportOnDemand(msg: TgMessage) {
  * أولاً مطابقة هاتف ولي أمر موثق، ثم هاتف مستخدم (معلم/إدارة).
  */
 async function linkByContact(msg: TgMessage): Promise<void> {
+  const api = botApi();
+
+  // يجب أن تكون الجهة هي جهة المرسل نفسه — منع مشاركة بطاقة رقم شخص آخر
+  if (!msg.contact!.user_id || msg.contact!.user_id !== msg.from?.id) {
+    await api.sendMessage(
+      msg.chat.id,
+      "لا يمكن الربط بجهة اتصال ليست لك. اضغط «مشاركة جهة اتصالي» لإرسال رقمك أنت.",
+      CONTACT_KEYBOARD,
+    );
+    return;
+  }
+
   const phone = msg.contact!.phone_number;
   const normalized = normalizePhone(phone);
-  const api = botApi();
   const tail = normalized.slice(-8);
 
   // أولوية: ولي أمر موثق
@@ -272,7 +301,7 @@ async function linkByContact(msg: TgMessage): Promise<void> {
     });
     await api.sendMessage(
       msg.chat.id,
-      `تم ربط حسابك كمعلم يا ${u.name}.\n` +
+      `تم ربط حسابك يا ${u.name} (${u.role === "admin" ? "إدارة" : "معلم"}).\n` +
       "أرسل «حضور» أو «سلوك» لرصد حصصك، أو اسم طالب لتقريره.",
     );
     return;

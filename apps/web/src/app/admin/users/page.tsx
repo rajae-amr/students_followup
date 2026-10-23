@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { requireRole } from "@/server/session";
 import { prisma } from "@app/db";
 import {
@@ -5,6 +6,7 @@ import {
   createGuardianInvite,
   toggleUser,
   resetUserPassword,
+  updateStaffUser,
 } from "@/server/actions/admin";
 import { FormWithResult } from "@/components/form-result";
 import { PageHeader } from "@/components/ui/page-header";
@@ -139,18 +141,44 @@ export default async function UsersAdmin() {
               <tr className="border-b border-slate-100 text-xs text-slate-400">
                 <th className="py-2 text-start font-semibold">الاسم</th>
                 <th className="text-start font-semibold">اسم المستخدم</th>
+                <th className="text-start font-semibold">تيليجرام</th>
                 <th className="text-start font-semibold">الحالة</th>
                 <th className="text-start font-semibold">إجراءات</th>
               </tr>
             </thead>
             <tbody>
               {admins.map((u) => (
-                <tr key={u.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-800">{u.name}</td>
-                  <td dir="ltr" className="text-slate-500">{u.username ?? "—"}</td>
-                  {statusCell(u)}
-                  {actionsCell(u)}
-                </tr>
+                <Fragment key={u.id}>
+                  <tr className="border-b border-slate-50">
+                    <td className="py-2.5 font-medium text-slate-800">{u.name}</td>
+                    <td dir="ltr" className="text-slate-500">{u.username ?? "—"}</td>
+                    <td>
+                      {u.telegramChatId
+                        ? <Badge tone="emerald">مرتبط</Badge>
+                        : <span className="text-xs text-slate-300">—</span>}
+                    </td>
+                    {statusCell(u)}
+                    {actionsCell(u)}
+                  </tr>
+                  <tr className="border-b border-slate-50 last:border-0">
+                    <td colSpan={5} className="pb-3">
+                      <details>
+                        <summary className="w-fit cursor-pointer text-xs font-semibold text-brand-600 hover:text-brand-700">
+                          تعديل البيانات (الاسم · الهاتف)
+                        </summary>
+                        <FormWithResult
+                          action={updateStaffUser}
+                          submitLabel="حفظ"
+                          className="mt-2 flex flex-wrap items-end gap-2"
+                        >
+                          <input type="hidden" name="userId" value={u.id} />
+                          <input name="name" defaultValue={u.name} required placeholder="الاسم" className={input} />
+                          <input name="phone" defaultValue={u.phone ?? ""} placeholder="الهاتف — مفتاح ربط البوت" dir="ltr" className={input} />
+                        </FormWithResult>
+                      </details>
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -181,19 +209,43 @@ export default async function UsersAdmin() {
             </thead>
             <tbody>
               {teachers.map((u) => (
-                <tr key={u.id} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-800">{u.name}</td>
-                  <td dir="ltr" className="text-slate-500">{u.username ?? "—"}</td>
-                  <td dir="ltr" className="text-slate-500">{u.phone ?? "—"}</td>
-                  <td className="text-slate-500">{u.teacherProfile?.defaultSubject ?? "—"}</td>
-                  <td>
-                    {u.telegramChatId
-                      ? <Badge tone="emerald">مرتبط</Badge>
-                      : <span className="text-xs text-slate-300">—</span>}
-                  </td>
-                  {statusCell(u)}
-                  {actionsCell(u)}
-                </tr>
+                <Fragment key={u.id}>
+                  <tr className="border-b border-slate-50">
+                    <td className="py-2.5 font-medium text-slate-800">{u.name}</td>
+                    <td dir="ltr" className="text-slate-500">{u.username ?? "—"}</td>
+                    <td dir="ltr" className="text-slate-500">{u.phone ?? "—"}</td>
+                    <td className="text-slate-500">{u.teacherProfile?.defaultSubject ?? "—"}</td>
+                    <td>
+                      {u.telegramChatId
+                        ? <Badge tone="emerald">مرتبط</Badge>
+                        : <span className="text-xs text-slate-300">—</span>}
+                    </td>
+                    {statusCell(u)}
+                    {actionsCell(u)}
+                  </tr>
+                  <tr className="border-b border-slate-50 last:border-0">
+                    <td colSpan={7} className="pb-3">
+                      <details>
+                        <summary className="w-fit cursor-pointer text-xs font-semibold text-brand-600 hover:text-brand-700">
+                          تعديل البيانات (الاسم · الهاتف · المادة)
+                        </summary>
+                        <FormWithResult
+                          action={updateStaffUser}
+                          submitLabel="حفظ"
+                          className="mt-2 flex flex-wrap items-end gap-2"
+                        >
+                          <input type="hidden" name="userId" value={u.id} />
+                          <input name="name" defaultValue={u.name} required placeholder="الاسم" className={input} />
+                          <input name="phone" defaultValue={u.phone ?? ""} placeholder="الهاتف — مفتاح ربط البوت" dir="ltr" className={input} />
+                          <select name="defaultSubject" defaultValue={u.teacherProfile?.defaultSubject ?? ""} className={input}>
+                            <option value="">المادة الافتراضية…</option>
+                            {subjects.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                          </select>
+                        </FormWithResult>
+                      </details>
+                    </td>
+                  </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
