@@ -1,0 +1,32 @@
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# بيانات وأسرار — لا تُرفع أبداً
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+snapshots/
+exports/
+config.json
+
+# سجلات
+*.log
+npm-debug.log*
+
+# نظام
+.DS_Store
+Thumbs.db
+
+snapshots/
+*.xlsx
+
+backups/
+*.dump

@@ -1,0 +1,696 @@
+// نظام متابعة الطلاب — مخطط PostgreSQL
+// المصدر الوحيد للحقيقة في النسخة الجديدة
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============ المصادقة (Better Auth) ============
+
+enum Role {
+  admin
+  teacher
+  guardian
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?   @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  username      String?   @unique
+  role          Role      @default(teacher)
+  isActive      Boolean   @default(true)
+  phone         String?
+  telegramChatId String?  @unique
+  telegramState Json?
+  mustChangePassword Boolean @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  memberships     Membership[]
+  guardianProfile GuardianProfile?
+  teacherProfile  TeacherProfile?
+  invitations     Invitation[]       @relation("InvitationCreator")
+  auditEvents     AuditEvent[]
+
+  @@map("users")
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@map("memberships")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verifications")
+}
+
+enum InvitationType {
+  guardian
+  staff
+}
+
+model Invitation {
+  id          String         @id @default(cuid())
+  type        InvitationType
+  tokenHash   String         @unique
+  payload     Json?          // روابط الأبناء المقصودة، الدور، إلخ
+  createdById String
+  createdBy   User           @relation("InvitationCreator", fields: [createdById], references: [id])
+  expiresAt   DateTime
+  usedAt      DateTime?
+  usedById    String?
+  attempts    Int            @default(0)
+  createdAt   DateTime       @default(now())
+
+  @@index([type, expiresAt])
+  @@map("invitations")
+}
+
+// ============ المدرسة والتقويم ============
+
+model SchoolSettings {
+  id                      String  @id @default("school")
+  schoolName              String
+  timezone                String  @default("Asia/Muscat")
+  periodsPerDay           Int     @default(8)
+  absentFullDayThreshold  Int     @default(3)   // 3 حصص غياب = غياب يوم
+  excusedFullDayThreshold Int     @default(3)
+  weekDays                Int[]   @default([0, 1, 2, 3, 4]) // 0=الأحد
+  autoAbsenceAlert        Boolean @default(false) // إشعار ولي الأمر آلياً عند اكتمال حالة الغياب
+  policyVersion           Int     @default(1)
+  updatedAt               DateTime @updatedAt
+
+  @@map("school_settings")
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  name      String   // "2026/2027"
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  isCurrent Boolean  @default(false)
+
+  terms       Term[]
+  classes     ClassGroup[]
+  enrollments Enrollment[]
+  assignments TeachingAssignment[]
+
+  @@unique([name])
+  @@map("academic_years")
+}
+
+model Term {
+  id             String   @id @default(cuid())
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  name           String
+  startDate      DateTime @db.Date
+  endDate        DateTime @db.Date
+
+  assessments    Assessment[]
+  evaluations    Evaluation[]
+  reports        ReportSnapshot[]
+
+  @@unique([academicYearId, name])
+  @@map("terms")
+}
+
+model CalendarDay {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date @unique
+  isSchoolDay Boolean  @default(true)
+  note        String?
+
+  @@map("calendar_days")
+}
+
+model PeriodDefinition {
+  id     String @id @default(cuid())
+  number Int    @unique
+  label  String?
+  startTime String? // "08:00"
+  endTime   String?
+
+  @@map("period_definitions")
+}
+
+// ============ الصفوف والمواد والطلاب ============
+
+model ClassGroup {
+  id             String   @id @default(cuid())
+  name           String   // "G6-GEN-3L"
+  displayName    String   // "الصف السادس - شعبة 3"
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  isActive       Boolean  @default(true)
+
+  students        Enrollment[]
+  assignments     TeachingAssignment[]
+  timetableSlots  TimetableSlot[]
+  lessonSessions  LessonSession[]
+  assessments     Assessment[]
+
+  @@unique([academicYearId, name])
+  @@map("class_groups")
+}
+
+model Subject {
+  id       String @id @default(cuid())
+  name     String @unique
+  isActive Boolean @default(true)
+
+  assignments    TeachingAssignment[]
+  timetableSlots TimetableSlot[]
+  lessonSessions LessonSession[]
+  assessments    Assessment[]
+  evaluations    Evaluation[]
+
+  @@map("subjects")
+}
+
+model Student {
+  id            String   @id @default(cuid())
+  fullName      String
+  gender        String?
+  guardianName  String?  // ولي الأمر قبل تفعيل الدعوة
+  guardianPhone String?  // يتدفق إلى GuardianProfile.phone عند التفعيل
+  isActive      Boolean  @default(true)
+  legacyId  Int?     @unique   // رقم SQLite القديم للمصالحة
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments       Enrollment[]
+  guardians         GuardianStudent[]
+  attendanceEntries AttendanceEntry[]
+  dailySummaries    DailySummary[]
+  behaviorEntries   BehaviorEntry[]
+  notes             Note[]
+  grades            Grade[]
+  evaluations       Evaluation[]
+  reportSnapshots   ReportSnapshot[]
+  reportViews       ReportViewEvent[]
+
+  @@index([isActive])
+  @@map("students")
+}
+
+model Enrollment {
+  id             String       @id @default(cuid())
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  classId        String
+  class          ClassGroup   @relation(fields: [classId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  startDate      DateTime?    @db.Date
+  endDate        DateTime?    @db.Date
+
+  @@index([classId, academicYearId])
+  @@index([studentId, academicYearId])
+  @@map("enrollments")
+}
+
+// ============ أولياء الأمور ============
+
+model GuardianProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone           String?
+  preferredChannel String  @default("telegram") // telegram | portal
+  createdAt       DateTime @default(now())
+
+  children GuardianStudent[]
+
+  @@map("guardian_profiles")
+}
+
+model TeacherProfile {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultSubject String?
+
+  @@map("teacher_profiles")
+}
+
+model GuardianStudent {
+  id            String          @id @default(cuid())
+  guardianId    String
+  guardian      GuardianProfile @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  relationship  String          @default("parent") // parent | other
+  verified      Boolean         @default(false)
+  canViewReports Boolean        @default(true)
+  createdById   String?         // من أنشأ الربط في الإدارة
+  createdAt     DateTime        @default(now())
+
+  @@unique([guardianId, studentId])
+  @@map("guardian_students")
+}
+
+// ============ الإسنادات والجدول ============
+
+model TeachingAssignment {
+  id             String       @id @default(cuid())
+  teacherId      String
+  classId        String
+  class          ClassGroup   @relation(fields: [classId], references: [id])
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  isActive       Boolean      @default(true)
+
+  @@unique([teacherId, classId, subjectId, academicYearId])
+  @@map("teaching_assignments")
+}
+
+model TimetableSlot {
+  id           String            @id @default(cuid())
+  assignmentId String?
+  teacherId    String
+  classId      String
+  class        ClassGroup        @relation(fields: [classId], references: [id])
+  subjectId    String
+  subject      Subject           @relation(fields: [subjectId], references: [id])
+  weekday      Int               // 0=الأحد .. 6=السبت
+  period       Int
+  effectiveFrom DateTime         @db.Date
+  effectiveTo   DateTime?        @db.Date
+  version      Int               @default(1)
+
+  lessonSessions LessonSession[]
+
+  @@index([teacherId, weekday])
+  @@index([classId, weekday])
+  @@map("timetable_slots")
+}
+
+// ============ الحصص والحضور ============
+
+enum LessonStatus {
+  planned
+  draft
+  submitted
+  reopened
+  cancelled
+}
+
+model LessonSession {
+  id              String       @id @default(cuid())
+  date            DateTime     @db.Date
+  period          Int
+  classId         String
+  class           ClassGroup   @relation(fields: [classId], references: [id])
+  subjectId       String
+  subject         Subject      @relation(fields: [subjectId], references: [id])
+  teacherId       String       // المعلم المسند وقت الإنشاء (تاريخي)
+  timetableSlotId String?
+  timetableSlot   TimetableSlot? @relation(fields: [timetableSlotId], references: [id])
+  status          LessonStatus @default(planned)
+  submittedById   String?
+  submittedAt     DateTime?
+  version         Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  entries         AttendanceEntry[]
+  behaviorEntries BehaviorEntry[]
+
+  @@unique([classId, date, period])
+  @@index([teacherId, date])
+  @@index([date])
+  @@map("lesson_sessions")
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  excused
+  late
+}
+
+model AttendanceEntry {
+  id              String           @id @default(cuid())
+  lessonSessionId String
+  lessonSession   LessonSession    @relation(fields: [lessonSessionId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student          @relation(fields: [studentId], references: [id])
+  status          AttendanceStatus
+  isAssumed       Boolean          @default(false) // اعتمدها المعلم ضمن "بقية الكشف حاضرون"
+  recordedById    String?
+  revision        Int              @default(1)
+  legacyId        Int?             // مرجع سجل قديم عند الترحيل
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([lessonSessionId, studentId])
+  @@index([studentId])
+  @@map("attendance_entries")
+}
+
+enum DayStatus {
+  present
+  absent
+  excused
+  partial   // غياب جزئي — حصة أو حصتان
+  late
+  unknown   // لا سجلات كافية
+}
+
+model DailySummary {
+  id            String    @id @default(cuid())
+  studentId     String
+  student       Student   @relation(fields: [studentId], references: [id])
+  date          DateTime  @db.Date
+  status        DayStatus
+  absentCount   Int       @default(0)
+  excusedCount  Int       @default(0)
+  lateCount     Int       @default(0)
+  recordedCount Int       @default(0) // حصص مرصودة
+  expectedCount Int       @default(0) // حصص مجدولة ذلك اليوم
+  policyVersion Int       @default(1)
+  computedAt    DateTime  @default(now())
+
+  @@unique([studentId, date])
+  @@index([date])
+  @@map("daily_summaries")
+}
+
+// ============ السلوك والملاحظات ============
+
+enum Audience {
+  internal
+  family
+}
+
+enum BehaviorCategory {
+  excellent
+  committed
+  needs_followup
+}
+
+model BehaviorEntry {
+  id              String            @id @default(cuid())
+  studentId       String
+  student         Student           @relation(fields: [studentId], references: [id])
+  date            DateTime          @db.Date
+  period          Int?
+  lessonSessionId String?
+  lessonSession   LessonSession?    @relation(fields: [lessonSessionId], references: [id])
+  teacherId       String
+  category        BehaviorCategory?
+  text            String?
+  audience        Audience          @default(internal)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([studentId, date])
+  @@map("behavior_entries")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  authorId  String?
+  date      DateTime @db.Date
+  category  String   // free | positive | absence | behavior
+  text      String
+  audience  Audience @default(internal)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studentId, date])
+  @@map("notes")
+}
+
+// ============ الدرجات والتقييمات ============
+
+model Assessment {
+  id          String    @id @default(cuid())
+  teacherId   String
+  classId     String
+  class       ClassGroup @relation(fields: [classId], references: [id])
+  subjectId   String
+  subject     Subject    @relation(fields: [subjectId], references: [id])
+  termId      String?
+  term        Term?      @relation(fields: [termId], references: [id])
+  title       String
+  kind        String    @default("quiz") // quiz | homework | exam | participation
+  date        DateTime  @db.Date
+  maxScore    Float
+  createdAt   DateTime  @default(now())
+
+  grades Grade[]
+
+  // الهوية تشمل المعلم والمادة — لا دمج بين مادتين بنفس العنوان
+  @@unique([teacherId, subjectId, classId, title, date])
+  @@map("assessments")
+}
+
+model Grade {
+  id           String     @id @default(cuid())
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      Student    @relation(fields: [studentId], references: [id])
+  score        Float?
+  note         String?
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([assessmentId, studentId])
+  @@map("grades")
+}
+
+model Evaluation {
+  id        String    @id @default(cuid())
+  teacherId String
+  subjectId String?
+  subject   Subject?  @relation(fields: [subjectId], references: [id])
+  studentId String
+  student   Student   @relation(fields: [studentId], references: [id])
+  termId    String?
+  term      Term?     @relation(fields: [termId], references: [id])
+  weekStart DateTime? @db.Date // أسبوع التقييم — null = سجل قديم بلا أسبوع
+  category  String    // مفتاح بند التقييم
+  value     String
+  updatedAt DateTime  @updatedAt
+
+  // كل معلم يقيّم بندّه دون استبدال تقييم معلم آخر — والقيمة أسبوعية
+  @@unique([teacherId, subjectId, studentId, termId, weekStart, category])
+  @@map("evaluations")
+}
+
+// ============ التقارير ============
+
+enum ReportStatus {
+  draft
+  approved
+  sent
+  failed
+}
+
+model ReportSnapshot {
+  id           String       @id @default(cuid())
+  studentId    String
+  student      Student      @relation(fields: [studentId], references: [id])
+  termId       String?
+  term         Term?        @relation(fields: [termId], references: [id])
+  rangeStart   DateTime     @db.Date
+  rangeEnd     DateTime     @db.Date
+  contentJson  Json         // البيانات المجمّعة وقت الاعتماد
+  renderedHtml String?
+  status       ReportStatus @default(draft)
+  approvedById String?
+  approvedAt   DateTime?
+  version      Int          @default(1)
+  createdAt    DateTime     @default(now())
+
+  @@index([studentId, rangeStart])
+  @@map("report_snapshots")
+}
+
+model ReportViewEvent {
+  id               String         @id @default(cuid())
+  reportSnapshotId String
+  studentId        String
+  student          Student        @relation(fields: [studentId], references: [id])
+  viewerUserId     String
+  viewedAt         DateTime       @default(now())
+
+  @@index([reportSnapshotId])
+  @@map("report_view_events")
+}
+
+// ============ التواصل والطابور ============
+
+enum OutboxStatus {
+  pending
+  processing
+  done
+  failed
+  cancelled
+}
+
+model OutboxEvent {
+  id             String       @id @default(cuid())
+  type           String       // report_send | telegram_message | ...
+  payload        Json
+  channel        String       @default("telegram")
+  status         OutboxStatus @default(pending)
+  idempotencyKey String       @unique
+  attempts       Int          @default(0)
+  nextAttemptAt  DateTime     @default(now())
+  lastError      String?
+  createdAt      DateTime     @default(now())
+
+  deliveries DeliveryAttempt[]
+
+  @@index([status, nextAttemptAt])
+  @@map("outbox_events")
+}
+
+model DeliveryAttempt {
+  id             String      @id @default(cuid())
+  outboxEventId  String
+  outboxEvent    OutboxEvent @relation(fields: [outboxEventId], references: [id], onDelete: Cascade)
+  channel        String
+  result         String      // success | failed | ambiguous
+  providerMsgId  String?
+  error          String?
+  attemptedAt    DateTime    @default(now())
+
+  @@index([outboxEventId])
+  @@map("delivery_attempts")
+}
+
+model TelegramUpdateInbox {
+  id          String    @id @default(cuid())
+  updateId    Int       @unique
+  payload     Json
+  status      String    @default("pending") // pending | processed | failed
+  processedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@map("telegram_update_inbox")
+}
+
+// ============ التدقيق والترحيل ============
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_events")
+}
+
+model ImportBatch {
+  id         String   @id @default(cuid())
+  kind       String   // students | legacy_full
+  status     String   @default("review") // review | applied | rolled_back
+  summary    Json?
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  records    LegacyRecordMap[]
+
+  @@map("import_batches")
+}
+
+model LegacyRecordMap {
+  id            String      @id @default(cuid())
+  importBatchId String
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  legacyTable   String
+  legacyId      String
+  newEntityType String?
+  newEntityId   String?
+  createdAt     DateTime    @default(now())
+
+  @@unique([importBatchId, legacyTable, legacyId])
+  @@map("legacy_record_map")
+}
+
+model ReviewIssue {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String?
+  severity    String   @default("warning") // info | warning | blocking
+  message     String
+  resolvedAt  DateTime?
+  resolvedById String?
+  createdAt   DateTime @default(now())
+
+  @@map("review_issues")
+}

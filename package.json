@@ -1,0 +1,30 @@
+{
+  "name": "student-followup",
+  "private": true,
+  "version": "0.1.0",
+  "description": "نظام متابعة الطلاب — Next.js Full Stack",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "tools/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @app/web",
+    "dev:worker": "npm run dev -w @app/worker",
+    "build": "npm run build -w @app/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run generate -w @app/db",
+    "db:migrate": "npm run migrate -w @app/db",
+    "db:studio": "npm run studio -w @app/db"
+  },
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10"
+  },
+  "dependencies": {
+    "generator-function": "^2.0.1",
+    "is-generator-function": "^1.1.2"
+  }
+}
