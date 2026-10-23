@@ -4,6 +4,8 @@ import { prisma } from "@app/db";
 import { requireRole } from "@/server/session";
 import { weekStartOf, schoolWeekDays } from "@app/core";
 import { PlanEditor } from "@/components/plan-editor";
+import { submitPlanAction, unsubmitPlanAction } from "@/server/actions/plans";
+import { FormWithResult } from "@/components/form-result";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,9 +45,21 @@ export default async function AdminPlanEditPage({
       />
       <Card>
         <div className="mb-3 flex items-center justify-between">
-          <Badge tone={plan?.status === "submitted" ? "emerald" : "amber"}>
-            {plan ? (plan.status === "submitted" ? "مسلّمة" : "مسودة") : "لم تُدخل بعد"}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge tone={plan?.status === "submitted" ? "emerald" : "amber"}>
+              {plan ? (plan.status === "submitted" ? "مسلّمة" : "مسودة") : "لم تُدخل بعد"}
+            </Badge>
+            {plan && (plan.status === "submitted" ? (
+              <FormWithResult action={unsubmitPlanAction} submitLabel="إرجاع للمسودة" bare>
+                <input type="hidden" name="planId" value={plan.id} />
+              </FormWithResult>
+            ) : (
+              <FormWithResult action={submitPlanAction} submitLabel="✅ تسليم للتجميع" bare
+                buttonClass="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-700">
+                <input type="hidden" name="planId" value={plan.id} />
+              </FormWithResult>
+            ))}
+          </div>
           <Link
             href={`/admin/plans?class=${classId}&week=${weekKey}`}
             className="text-xs font-semibold text-brand-600 hover:text-brand-700"
