@@ -8,6 +8,7 @@ import { prisma } from "@app/db";
 import { sendReportJob } from "./reportSend";
 import { sendAlertJob } from "./alertSend";
 import { sendDigestJob } from "./digestSend";
+import { sendPlanJob } from "./planSend";
 import { processTelegramUpdate } from "./telegramInbox";
 
 /** إرسال أحداث Outbox المستحقة — يعيد عدد ما نجح معالجته */
@@ -24,6 +25,7 @@ export async function drainOutbox(limit = 25): Promise<number> {
       if (e.type === "report_send") await sendReportJob(e.id);
       else if (e.type === "absence_alert") await sendAlertJob(e.id);
       else if (e.type === "weekly_digest") await sendDigestJob(e.id);
+      else if (e.type === "plan_notify") await sendPlanJob(e.id);
       else continue;
       done++;
     } catch (err) {

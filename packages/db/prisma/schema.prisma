@@ -42,6 +42,7 @@ model User {
   guardianProfile GuardianProfile?
   teacherProfile  TeacherProfile?
   auditEvents     AuditEvent[]
+  weeklyPlans     WeeklyPlan[]
 
   @@map("users")
 }
@@ -186,6 +187,8 @@ model ClassGroup {
   timetableSlots  TimetableSlot[]
   lessonSessions  LessonSession[]
   assessments     Assessment[]
+  weeklyPlans     WeeklyPlan[]
+  planPublications ClassWeeklyPlanPublication[]
 
   @@unique([academicYearId, name])
   @@map("class_groups")
@@ -201,6 +204,7 @@ model Subject {
   lessonSessions LessonSession[]
   assessments    Assessment[]
   evaluations    Evaluation[]
+  weeklyPlans    WeeklyPlan[]
 
   @@map("subjects")
 }
@@ -671,4 +675,56 @@ model ReviewIssue {
   createdAt   DateTime @default(now())
 
   @@map("review_issues")
+}
+
+// ============ الخطة الأسبوعية ============
+
+/** مساهمة معلم واحد — وحدة الإدخال: صف + مادة + أسبوع */
+model WeeklyPlan {
+  id          String     @id @default(cuid())
+  teacherId   String
+  teacher     User       @relation(fields: [teacherId], references: [id])
+  classId     String
+  class       ClassGroup @relation(fields: [classId], references: [id])
+  subjectId   String
+  subject     Subject    @relation(fields: [subjectId], references: [id])
+  weekStart   DateTime   @db.Date // الاثنين — بمنطق weekStartOf
+  status      String     @default("draft") // draft | submitted
+  submittedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  entries     WeeklyPlanEntry[]
+
+  @@unique([teacherId, classId, subjectId, weekStart])
+  @@map("weekly_plans")
+}
+
+model WeeklyPlanEntry {
+  id          String     @id @default(cuid())
+  planId      String
+  plan        WeeklyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  weekday     Int // مطابق أيام المدرسة settings.weekDays
+  lessonTitle String?
+  textbook    String?
+  platforms   String?
+  tests       String?
+  notes       String?
+
+  @@unique([planId, weekday])
+  @@map("weekly_plan_entries")
+}
+
+/** لقطة موحّدة مجمّعة لصف+أسبوع — وحدة الإرسال لأولياء الأمور */
+model ClassWeeklyPlanPublication {
+  id            String     @id @default(cuid())
+  classId       String
+  class         ClassGroup @relation(fields: [classId], references: [id])
+  weekStart     DateTime   @db.Date
+  contentJson   Json // [{subjectName, teacherName, entries:[{weekday,...}]}]
+  publishedById String?
+  publishedAt   DateTime   @default(now())
+  notifyCount   Int        @default(0)
+
+  @@map("class_plan_publications")
 }

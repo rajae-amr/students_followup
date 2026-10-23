@@ -61,7 +61,7 @@ export default async function ParentPage() {
         where: {
           channel: "portal",
           status: "done",
-          type: { in: ["absence_alert", "report_send", "weekly_digest"] },
+          type: { in: ["absence_alert", "report_send", "weekly_digest", "plan_notify"] },
           payload: { path: ["guardianId"], equals: profile.id },
         },
         orderBy: { createdAt: "desc" },
@@ -73,6 +73,7 @@ export default async function ParentPage() {
     absence_alert: "تنبيه غياب",
     report_send: "تقرير مدرسي",
     weekly_digest: "التقرير الأسبوعي",
+    plan_notify: "الخطة الأسبوعية",
   };
 
   return (
@@ -92,9 +93,15 @@ export default async function ParentPage() {
                 studentName?: string;
                 date?: string;
                 status?: string;
+                publicationId?: string;
               };
               const student = children.find((c) => c.student.id === p.studentId)?.student;
-              const href = student ? `/parent/student/${student.id}` : "/parent";
+              const href =
+                a.type === "plan_notify" && p.publicationId
+                  ? `/parent/plans/${p.publicationId}`
+                  : student
+                    ? `/parent/student/${student.id}`
+                    : "/parent";
               return (
                 <li key={a.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <Link href={href} className="flex items-center gap-2 hover:text-brand-700">

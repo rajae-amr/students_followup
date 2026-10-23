@@ -7,3 +7,4 @@ export * from "./services/reports";
 export * from "./services/time";
 export * from "./export/weeklyRegister";
 export * from "./services/weeklyDigest";
+export * from "./services/weeklyPlan";

@@ -71,6 +71,7 @@ export async function addSubject(formData: FormData): Promise<Result> {
     if (!name) return fail("اسم المادة مطلوب");
     await prisma.subject.create({ data: { name } });
     revalidatePath("/admin/schedule");
+    revalidatePath("/admin/subjects");
     return { ok: true };
   } catch {
     return fail("المادة موجودة مسبقاً");

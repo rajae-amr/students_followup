@@ -4,7 +4,11 @@ const nextConfig: NextConfig = {
   // حزم workspace تحوّل من المصدر مباشرة
   transpilePackages: ["@app/db", "@app/core", "@app/auth", "@app/ui"],
   // خدمات الخادم تعمل على Node.js runtime
-  serverExternalPackages: ["@prisma/client", "exceljs"],
+  serverExternalPackages: ["@prisma/client", "exceljs", "@react-pdf/renderer"],
+  // ملفات الخطوط تُنسخ داخل دوال Vercel
+  outputFileTracingIncludes: {
+    "/api/**/*": ["./public/fonts/**/*"],
+  },
   async headers() {
     return [
       {

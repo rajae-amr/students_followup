@@ -11,24 +11,25 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@app/auth": "*",
+    "@app/core": "*",
+    "@app/db": "*",
+    "@prisma/client": "6.2.1",
+    "@react-pdf/renderer": "^4.1.6",
+    "better-auth": "1.1.17",
+    "grammy": "1.32.0",
     "next": "15.5.28",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "better-auth": "1.1.17",
-    "grammy": "1.32.0",
-    "@app/db": "*",
-    "@prisma/client": "6.2.1",
-    "@app/core": "*",
-    "@app/auth": "*",
     "zod": "3.24.1"
   },
   "devDependencies": {
-    "typescript": "5.7.2",
+    "@tailwindcss/postcss": "4.3.3",
     "@types/node": "22.10.5",
     "@types/react": "19.0.4",
     "@types/react-dom": "19.0.2",
+    "postcss": "8.4.49",
     "tailwindcss": "4.3.3",
-    "@tailwindcss/postcss": "4.3.3",
-    "postcss": "8.4.49"
+    "typescript": "5.7.2"
   }
 }
