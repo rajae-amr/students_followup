@@ -67,8 +67,8 @@ export default async function AbsencePage({
   });
   const alerted = new Set(
     sent
-      .filter((e) => (e.payload as { date?: string }).date === dateStr && e.status !== "cancelled")
-      .map((e) => (e.payload as { studentId: string }).studentId),
+      .filter((e: (typeof sent)[number]) => (e.payload as { date?: string }).date === dateStr && e.status !== "cancelled")
+      .map((e: (typeof sent)[number]) => (e.payload as { studentId: string }).studentId),
   );
 
   return (
