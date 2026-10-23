@@ -29,6 +29,12 @@ export function splitMessage(text: string, limit = TELEGRAM_LIMIT): string[] {
   return parts;
 }
 
+/** رابط بوابة أولياء الأمور — من رابط المنصة العام */
+export function portalUrl(): string {
+  const base = (process.env.BETTER_AUTH_URL ?? "").replace(/\/+$/, "");
+  return base ? `${base}/parent` : "";
+}
+
 /** تنسيق التقرير المدرسي الموحد كنص عربي */
 export function renderReportText(c: StudentReportContent, schoolName: string): string {
   const lines: string[] = [
@@ -68,6 +74,7 @@ export function renderReportText(c: StudentReportContent, schoolName: string): s
       lines.push(`• ${b.date}: ${b.category ?? ""} ${b.text ?? ""}`.trim());
   }
 
-  lines.push("", "للتفاصيل الكاملة: بوابة أولياء الأمور.");
+  const portal = portalUrl();
+  lines.push("", portal ? `للتفاصيل الكاملة — بوابة أولياء الأمور:\n${portal}` : "للتفاصيل الكاملة: بوابة أولياء الأمور.");
   return lines.join("\n");
 }

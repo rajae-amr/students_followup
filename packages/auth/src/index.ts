@@ -50,11 +50,4 @@ export const auth = betterAuth({
 
 export type Session = typeof auth.$Infer.Session;
 
-export {
-  createInvitation,
-  redeemInvitation,
-  registerFailedAttempt,
-  InvitationError,
-} from "./invitations";
-
 export { createGuardianAccount, createTeacherAccount, generatePassword } from "./accounts";

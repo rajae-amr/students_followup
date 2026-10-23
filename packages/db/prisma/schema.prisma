@@ -41,7 +41,6 @@ model User {
   memberships     Membership[]
   guardianProfile GuardianProfile?
   teacherProfile  TeacherProfile?
-  invitations     Invitation[]       @relation("InvitationCreator")
   auditEvents     AuditEvent[]
 
   @@map("users")
@@ -102,28 +101,6 @@ model Verification {
   updatedAt  DateTime @updatedAt
 
   @@map("verifications")
-}
-
-enum InvitationType {
-  guardian
-  staff
-}
-
-model Invitation {
-  id          String         @id @default(cuid())
-  type        InvitationType
-  tokenHash   String         @unique
-  payload     Json?          // روابط الأبناء المقصودة، الدور، إلخ
-  createdById String
-  createdBy   User           @relation("InvitationCreator", fields: [createdById], references: [id])
-  expiresAt   DateTime
-  usedAt      DateTime?
-  usedById    String?
-  attempts    Int            @default(0)
-  createdAt   DateTime       @default(now())
-
-  @@index([type, expiresAt])
-  @@map("invitations")
 }
 
 // ============ المدرسة والتقويم ============

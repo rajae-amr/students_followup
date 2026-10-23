@@ -5,7 +5,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "@app/db";
 import { drainOutbox } from "@/lib/jobs/drain";
-import { createInvitation, auth, createGuardianAccount, createTeacherAccount, generatePassword } from "@app/auth";
+import { auth, createGuardianAccount, createTeacherAccount, generatePassword } from "@app/auth";
 import { generateWeeklyDigests } from "@app/core";
 import { hashPassword } from "better-auth/crypto";
 import { requireRole, requireActor } from "../session";
@@ -124,48 +124,6 @@ export async function deleteTimetableSlot(formData: FormData): Promise<Result> {
     return { ok: true };
   } catch {
     return fail("تعذر حذف الحصة");
-  }
-}
-
-export async function createStaffInvite(formData: FormData): Promise<Result> {
-  try {
-    const actor = await requireRole("admin");
-    const name = String(formData.get("name") ?? "").trim();
-    if (!name) return fail("اسم المعلم مطلوب");
-    const { token, expiresAt } = await createInvitation({
-      type: "staff",
-      createdById: actor.userId,
-      role: "teacher",
-    });
-    return {
-      ok: true,
-      message: `رمز دعوة ${name}: ${token} (صالح حتى ${expiresAt.toLocaleDateString("ar")})`,
-    };
-  } catch {
-    return fail("تعذر إنشاء الدعوة");
-  }
-}
-
-export async function createGuardianInvite(
-  formData: FormData,
-): Promise<Result> {
-  try {
-    const actor = await requireRole("admin");
-    const studentId = String(formData.get("studentId") ?? "");
-    if (!studentId) return fail("اختر الطالب");
-    const student = await prisma.student.findUnique({ where: { id: studentId } });
-    if (!student) return fail("الطالب غير موجود");
-    const { token, expiresAt } = await createInvitation({
-      type: "guardian",
-      createdById: actor.userId,
-      studentIds: [studentId],
-    });
-    return {
-      ok: true,
-      message: `رمز دعوة ولي أمر ${student.fullName}: ${token} (حتى ${expiresAt.toLocaleDateString("ar")})`,
-    };
-  } catch {
-    return fail("تعذر إنشاء الدعوة");
   }
 }
 
@@ -423,7 +381,7 @@ export async function createTeacherAccountAction(
       defaultSubject: subject,
       mustChangePassword: true,
     });
-    revalidatePath("/admin/users");
+    revalidatePath("/admin/users", "layout");
     return { ok: true, rows: [{ names: name, username: acc.username, password }], skipped: 0 };
   } catch {
     return { ok: false, error: "تعذر إنشاء حساب المعلم" };
@@ -731,7 +689,7 @@ export async function toggleUser(formData: FormData): Promise<Result> {
     await prisma.user.update({ where: { id }, data: { isActive: !u.isActive } });
     // تعطيل الحساب يلغي جلساته فوراً
     if (u.isActive) await prisma.session.deleteMany({ where: { userId: id } });
-    revalidatePath("/admin/users");
+    revalidatePath("/admin/users", "layout");
     return { ok: true };
   } catch {
     return fail("تعذر تحديث المستخدم");
@@ -767,7 +725,7 @@ export async function updateStaffUser(formData: FormData): Promise<Result> {
         update: { defaultSubject },
       });
     }
-    revalidatePath("/admin/users");
+    revalidatePath("/admin/users", "layout");
     return {
       ok: true,
       message: phoneChanged

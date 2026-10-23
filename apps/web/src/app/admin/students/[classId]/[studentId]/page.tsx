@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { prisma } from "@app/db";
 import {
-  editStudent, toggleStudent, createGuardianInvite,
+  editStudent, toggleStudent,
   linkGuardianToStudent, unlinkGuardian, toggleGuardianReports,
 } from "@/server/actions/admin";
 import { FormWithResult } from "@/components/form-result";
@@ -228,16 +228,6 @@ export default async function StudentFilePage({
               siteUrl={process.env.BETTER_AUTH_URL ?? "http://localhost:3000"}
               botUsername={process.env.TELEGRAM_BOT_USERNAME ?? "aljasr_students_bot"}
             />
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-600">
-                أو دعوة تقليدية برمز (/invite)
-              </summary>
-              <div className="mt-2">
-                <FormWithResult action={createGuardianInvite} submitLabel="إنشاء رمز دعوة">
-                  <input type="hidden" name="studentId" value={student.id} />
-                </FormWithResult>
-              </div>
-            </details>
           </div>
         </Card>
       </div>

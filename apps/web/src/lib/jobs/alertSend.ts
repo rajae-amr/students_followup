@@ -3,7 +3,7 @@
  * نفس ضمانات إرسال التقارير: محاولات مسجلة وتمييز الحالات الملتبسة.
  */
 import { prisma } from "@app/db";
-import { botApi } from "../telegram";
+import { botApi, portalUrl } from "../telegram";
 
 export async function sendAlertJob(outboxEventId: string): Promise<void> {
   const event = await prisma.outboxEvent.findUnique({
@@ -39,7 +39,8 @@ export async function sendAlertJob(outboxEventId: string): Promise<void> {
         `${settings?.schoolName ?? "المدرسة"} — تنبيه غياب\n` +
         `نود إعلامكم بتسجيل الطالب/ة «${payload.studentName}» ${statusText} ` +
         `يوم ${payload.date}.\n` +
-        `للاستفسار أو تقديم عذر يرجى التواصل مع إدارة المدرسة.`;
+        `للاستفسار أو تقديم عذر يرجى التواصل مع إدارة المدرسة.` +
+        (portalUrl() ? `\n\nبوابة أولياء الأمور:\n${portalUrl()}` : "");
       const msg = await botApi().sendMessage(payload.telegramChatId, text);
       providerMsgId = String(msg.message_id);
     } else {
