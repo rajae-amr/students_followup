@@ -56,10 +56,12 @@ export async function lessonsForTeacher(actor: Actor, date: Date) {
   requireActive(actor);
   const day = dateOnly(date);
   const weekday = schoolWeekday(day);
+  // الإدارة ترى كل حصص اليوم — إشرافاً أو تسجيلاً نيابة عن معلم غائب
+  const scope = actor.role === "teacher" ? { teacherId: actor.userId } : {};
 
   const slots = await prisma.timetableSlot.findMany({
     where: {
-      teacherId: actor.userId,
+      ...scope,
       weekday,
       effectiveFrom: { lte: day },
       OR: [{ effectiveTo: null }, { effectiveTo: { gte: day } }],
@@ -72,7 +74,7 @@ export async function lessonsForTeacher(actor: Actor, date: Date) {
   });
 
   const sessions = await prisma.lessonSession.findMany({
-    where: { teacherId: actor.userId, date: day },
+    where: { ...scope, date: day },
     include: { _count: { select: { entries: true } } },
   });
   const byKey = new Map(
@@ -98,6 +100,19 @@ export async function lessonsForTeacher(actor: Actor, date: Date) {
     : [];
   const rosterCount = new Map(roster.map((r) => [r.classId, r._count.studentId]));
 
+  // أسماء المعلمين — للعرض الإشرافي (teacherId بلا علاقة في المخطط)
+  const teacherNames =
+    actor.role === "teacher"
+      ? new Map<string, string>()
+      : new Map(
+          (
+            await prisma.user.findMany({
+              where: { id: { in: [...new Set(slots.map((s) => s.teacherId))] } },
+              select: { id: true, name: true },
+            })
+          ).map((u) => [u.id, u.name] as const),
+        );
+
   return slots.map((slot) => {
     const session = byKey.get(`${slot.classId}:${slot.period}`);
     return {
@@ -107,6 +122,8 @@ export async function lessonsForTeacher(actor: Actor, date: Date) {
       className: slot.class.displayName,
       subjectId: slot.subjectId,
       subjectName: slot.subject.name,
+      teacherId: slot.teacherId,
+      teacherName: teacherNames.get(slot.teacherId) ?? null,
       sessionId: session?.id ?? null,
       sessionStatus: session?.status ?? null,
       recordedCount: session?._count.entries ?? 0,

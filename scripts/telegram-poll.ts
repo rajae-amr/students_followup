@@ -9,7 +9,7 @@
 import { join } from "node:path";
 
 try {
-  process.loadEnvFile(join(import.meta.dirname, "../apps/web/.env"));
+  process.loadEnvFile(join(import.meta.dirname, "../.env"));
 } catch { /* بيئة النظام */ }
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -17,7 +17,7 @@ const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
 const target = process.env.POLL_TARGET ?? "http://localhost:3000";
 
 if (!token || !secret) {
-  console.error("يلزم TELEGRAM_BOT_TOKEN و TELEGRAM_WEBHOOK_SECRET في apps/web/.env");
+  console.error("يلزم TELEGRAM_BOT_TOKEN و TELEGRAM_WEBHOOK_SECRET في .env");
   process.exit(1);
 }
 

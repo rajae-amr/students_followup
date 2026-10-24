@@ -1,0 +1,2 @@
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'staff';
+ALTER TABLE "users" ADD COLUMN "permissions" JSONB;

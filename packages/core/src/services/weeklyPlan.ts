@@ -142,7 +142,7 @@ export async function classPlanMatrix(
 ): Promise<ClassPlanRow[]> {
   const year = await prisma.academicYear.findFirst({ where: { isCurrent: true } });
   const assignments = await prisma.teachingAssignment.findMany({
-    where: { classId, academicYearId: year?.id, isActive: true },
+    where: { classId, academicYearId: year?.id ?? "", isActive: true },
     include: { subject: { select: { id: true, name: true } } },
     orderBy: { subject: { name: "asc" } },
   });
@@ -201,7 +201,7 @@ export async function publishClassPlan(
   // كل إسنادات الصف — المسلّمة ببنودها وغيرها تُعلَّم «لم تُسلَّم»
   const year = await prisma.academicYear.findFirst({ where: { isCurrent: true } });
   const assignments = await prisma.teachingAssignment.findMany({
-    where: { classId: input.classId, academicYearId: year?.id, isActive: true },
+    where: { classId: input.classId, academicYearId: year?.id ?? "", isActive: true },
     include: { subject: { select: { id: true, name: true } } },
     orderBy: { subject: { name: "asc" } },
   });
@@ -256,7 +256,7 @@ export async function publishClassPlan(
       student: {
         isActive: true,
         enrollments: {
-          some: { classId: input.classId, academicYearId: year?.id },
+          some: { classId: input.classId, academicYearId: year?.id ?? "" },
         },
       },
     },

@@ -16,6 +16,7 @@ datasource db {
 
 enum Role {
   admin
+  staff
   teacher
   guardian
 }
@@ -32,6 +33,7 @@ model User {
   phone         String?
   telegramChatId String?  @unique
   telegramState Json?
+  permissions   Json?       // أقسام الإدارة المفوَّضة لدور staff — قائمة مفاتيح
   mustChangePassword Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -43,6 +45,7 @@ model User {
   teacherProfile  TeacherProfile?
   auditEvents     AuditEvent[]
   weeklyPlans     WeeklyPlan[]
+  dutyAssignments DutyAssignment[]
 
   @@map("users")
 }
@@ -116,6 +119,7 @@ model SchoolSettings {
   weekDays                Int[]   @default([0, 1, 2, 3, 4]) // 0=الأحد
   autoAbsenceAlert        Boolean @default(false) // إشعار ولي الأمر آلياً عند اكتمال حالة الغياب
   policyVersion           Int     @default(1)
+  constraintsJson         String?                 // قيود محرك الجدولة — JSON نص
   updatedAt               DateTime @updatedAt
 
   @@map("school_settings")
@@ -180,6 +184,8 @@ model ClassGroup {
   displayName    String   // "الصف السادس - شعبة 3"
   academicYearId String
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  gradeId        String?  // مستوى الصف للكوتا والجدولة
+  grade          GradeLevel? @relation(fields: [gradeId], references: [id])
   isActive       Boolean  @default(true)
 
   students        Enrollment[]
@@ -198,6 +204,12 @@ model Subject {
   id       String @id @default(cuid())
   name     String @unique
   isActive Boolean @default(true)
+  // خصائص الجدولة — من «البرنامج المدرسي»
+  code          String?
+  color         String?  @default("#8b5cf6")
+  preferEarly   Boolean  @default(false) // تفضيل الحصص المبكرة
+  maxPerDay     Int?     // أقصى حصص يومية لكل شعبة
+  minDaysPerWeek Int?    // أدنى أيام ظهور المادة لكل شعبة
 
   assignments    TeachingAssignment[]
   timetableSlots TimetableSlot[]
@@ -205,6 +217,8 @@ model Subject {
   assessments    Assessment[]
   evaluations    Evaluation[]
   weeklyPlans    WeeklyPlan[]
+  gradeQuotas       SubjectGradeQuota[]
+  unavailabilities  SubjectUnavailability[]
 
   @@map("subjects")
 }
@@ -271,6 +285,17 @@ model TeacherProfile {
   userId         String  @unique
   user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   defaultSubject String?
+  // قيود الجدولة — من «البرنامج المدرسي»
+  specialization  String?
+  employeeNo      String?
+  weeklyLessons   Int      @default(22) // النصاب التعاقدي الأسبوعي
+  maxDailyLessons Int?
+  maxConsecutive  Int?
+  maxWorkingDays  Int?
+  avoidLastPeriod Boolean  @default(false)
+  color           String   @default("#3b82f6")
+
+  unavailabilities TeacherAvailability[]
 
   @@map("teacher_profiles")
 }
@@ -304,6 +329,8 @@ model TeachingAssignment {
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
   isActive       Boolean      @default(true)
 
+  generatedEntries GeneratedTimetableEntry[]
+
   @@unique([teacherId, classId, subjectId, academicYearId])
   @@map("teaching_assignments")
 }
@@ -327,6 +354,116 @@ model TimetableSlot {
   @@index([teacherId, weekday])
   @@index([classId, weekday])
   @@map("timetable_slots")
+}
+
+// ============ الجدولة الآلية (من «البرنامج المدرسي») ============
+
+// مستوى الصف الدراسي — تتبعه الشعب (ClassGroup) وتُعرَّف عليه كوتا المواد
+model GradeLevel {
+  id    String @id @default(cuid())
+  name  String @unique // "الصف السادس"
+  order Int    @default(0)
+
+  classes     ClassGroup[]
+  gradeQuotas SubjectGradeQuota[]
+
+  @@map("grade_levels")
+}
+
+// النصاب الأسبوعي للمادة في صف دراسي — يُشتق منه عدد حصص كل إسناد
+model SubjectGradeQuota {
+  id            String     @id @default(cuid())
+  subjectId     String
+  subject       Subject    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  gradeId       String
+  grade         GradeLevel @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  weeklyPeriods Int        @default(0)
+
+  @@unique([subjectId, gradeId])
+  @@map("subject_grade_quotas")
+}
+
+// خانة زمنية غير متاحة للمعلم (teacherId = User.id كبقية النظام)
+model TeacherAvailability {
+  id          String         @id @default(cuid())
+  teacherId   String
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [userId], onDelete: Cascade)
+  dayOfWeek   Int
+  periodIndex Int // فهرس الخانة في اليوم (DayPeriodDef.index)
+
+  @@unique([teacherId, dayOfWeek, periodIndex])
+  @@map("teacher_unavailabilities")
+}
+
+// خانة زمنية محظورة على المادة — تنطبق على كل معلميها
+model SubjectUnavailability {
+  id          String  @id @default(cuid())
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  periodIndex Int
+
+  @@unique([subjectId, dayOfWeek, periodIndex])
+  @@map("subject_unavailabilities")
+}
+
+// تعريف الحصص/الاستراحات لكل يوم دوام على حدة (الجمعة جدول مختلف)
+model DayPeriodDef {
+  id          String  @id @default(cuid())
+  dayOfWeek   Int     // 0=الأحد .. 6=السبت
+  index       Int     // ترتيب الخانة في اليوم (يشمل الاستراحات)
+  label       String  // "الحصة 1" أو "استراحة"
+  start       String? // "07:30"
+  end         String?
+  isBreak     Boolean @default(false)
+
+  @@unique([dayOfWeek, index])
+  @@map("day_period_defs")
+}
+
+// جدول مولّد قابل للمراجعة قبل تحويله إلى timetable_slots
+model GeneratedTimetable {
+  id           String   @id @default(cuid())
+  name         String   @default("الجدول الرئيسي")
+  status       String   @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  qualityScore Float?
+  statsJson    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  entries GeneratedTimetableEntry[]
+  jobs    TimetableJob[]
+
+  @@map("generated_timetables")
+}
+
+model GeneratedTimetableEntry {
+  id           String @id @default(cuid())
+  timetableId  String
+  timetable    GeneratedTimetable @relation(fields: [timetableId], references: [id], onDelete: Cascade)
+  dayOfWeek    Int
+  periodIndex  Int    // فهرس الخانة في اليوم (DayPeriodDef.index)
+  assignmentId String
+  assignment   TeachingAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([timetableId, dayOfWeek, periodIndex, assignmentId])
+  @@index([assignmentId])
+  @@map("generated_timetable_entries")
+}
+
+// مهمة توليد غير متزامنة — الواجهة تستعلم عن حالتها
+model TimetableJob {
+  id              String   @id @default(cuid())
+  status          String   @default("PENDING") // PENDING | RUNNING | DONE | FAILED | INFEASIBLE
+  logJson         String?
+  diagnosticsJson String?
+  timetableId     String?
+  timetable       GeneratedTimetable? @relation(fields: [timetableId], references: [id])
+  error           String?
+  createdAt       DateTime @default(now())
+  finishedAt      DateTime?
+
+  @@map("timetable_jobs")
 }
 
 // ============ الحصص والحضور ============
@@ -727,4 +864,37 @@ model ClassWeeklyPlanPublication {
   notifyCount   Int        @default(0)
 
   @@map("class_plan_publications")
+}
+
+// ===== ??????? ?????????? ????????? =====
+
+/** ???? ?????: ??????/????/????/??? ????-????... ????? ??????? ?? ??????? */
+model DutyLocation {
+  id        String  @id @default(cuid())
+  name      String
+  group     String? // ????? ?????: �????? ??????�/�????? ?????�/�???�
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  duties    DutyAssignment[]
+
+  @@map("duty_locations")
+}
+
+/** ?????? ???? ??? ???? ?? ??? ?? ????? ????? � ??????? ????? ?? ????? ????? */
+model DutyAssignment {
+  id         String   @id @default(cuid())
+  weekStart  DateTime @db.Date
+  dayOfWeek  Int
+  locationId String
+  location   DutyLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  teacherId  String?
+  teacher    User? @relation(fields: [teacherId], references: [id])
+  /** اسم نصي لمناوب بلا حساب — كادر إداري/مشرف غير مسجّل */
+  label      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([weekStart, dayOfWeek, locationId])
+  @@index([teacherId, weekStart])
+  @@map("duty_assignments")
 }

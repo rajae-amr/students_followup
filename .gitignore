@@ -30,3 +30,7 @@ snapshots/
 
 backups/
 *.dump
+
+scripts/teacher_credentials.csv
+scripts/_*.cjs
+scripts/scheduler_export.json
