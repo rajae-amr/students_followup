@@ -42,6 +42,7 @@ export default async function ParentPage() {
                 take: 1,
               },
               grades: {
+                where: { assessment: { publishedAt: { not: null } } },
                 orderBy: { updatedAt: "desc" },
                 take: 1,
                 include: { assessment: { include: { subject: true } } },
@@ -69,6 +70,13 @@ export default async function ParentPage() {
       })
     : [];
 
+  // إعلانات المدرسة للأهل
+  const announcements = await prisma.announcement.findMany({
+    where: { audience: { in: ["all", "guardians"] } },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+  });
+
   const ALERT_LABEL: Record<string, string> = {
     absence_alert: "تنبيه غياب",
     report_send: "تقرير مدرسي",
@@ -79,6 +87,28 @@ export default async function ParentPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="أبنائي" subtitle="متابعة حضور وسلوك أبنائك المرتبطين بحسابك" />
+
+      {announcements.length > 0 && (
+        <Card className="mb-4">
+          <h2 className="mb-2 flex items-center gap-2 font-bold text-slate-800">
+            <Icon.reports className="h-5 w-5 text-amber-600" />
+            إعلانات المدرسة
+          </h2>
+          <ul className="space-y-2">
+            {announcements.map((a) => (
+              <li key={a.id} className="rounded-xl bg-amber-50/60 px-3 py-2.5 ring-1 ring-amber-100">
+                <p className="text-sm font-bold text-slate-800">
+                  {a.title}
+                  <span className="ms-2 text-xs font-normal text-slate-400">
+                    {a.createdAt.toLocaleDateString("ar", { day: "numeric", month: "short" })}
+                  </span>
+                </p>
+                <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{a.body}</p>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {alerts.length > 0 && (
         <Card className="mb-4">

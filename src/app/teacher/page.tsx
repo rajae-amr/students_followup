@@ -62,10 +62,15 @@ export default async function TeacherPage({
 
   // حالة خطط هذا الأسبوع: مسلّمة من أصل التكليفات النشطة
   const wk = weekStartOf(today);
-  const [planCount, assignCount] = await Promise.all([
+  const [planCount, assignCount, announcements] = await Promise.all([
     prisma.weeklyPlan.count({ where: { teacherId: actor.userId, weekStart: wk, status: "submitted" } }),
     prisma.teachingAssignment.count({
       where: { teacherId: actor.userId, isActive: true, academicYear: { isCurrent: true } },
+    }),
+    prisma.announcement.findMany({
+      where: { audience: { in: ["all", "teachers"] } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
     }),
   ]);
 
@@ -81,6 +86,23 @@ export default async function TeacherPage({
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">مرحباً أ. {firstName}</h1>
         <p className="mt-1 text-sm text-slate-500">{dayAr}</p>
       </header>
+
+      {/* إعلانات الإدارة */}
+      {announcements.length > 0 && (
+        <section className="mb-5 space-y-2" aria-label="إعلانات المدرسة">
+          {announcements.map((a) => (
+            <div key={a.id} className="rounded-2xl bg-amber-50/70 px-4 py-3 ring-1 ring-amber-100">
+              <p className="text-sm font-bold text-slate-800">
+                {a.title}
+                <span className="ms-2 text-xs font-normal text-slate-400">
+                  {a.createdAt.toLocaleDateString("ar", { day: "numeric", month: "short" })}
+                </span>
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{a.body}</p>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* تنقّل بالأيام */}
       <nav className="mb-5 flex items-center justify-between rounded-2xl bg-white p-2 shadow-soft ring-1 ring-slate-100">

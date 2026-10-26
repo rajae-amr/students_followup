@@ -42,6 +42,88 @@ export async function setDutyAction(formData: FormData): Promise<Result> {
   }
 }
 
+/**
+ * تعبئة تلقائية عادلة لشبكة المناوبة:
+ * - الخلية تذهب للأقل مناوبات هذا الأسبوع، غير المناوب في ذلك اليوم،
+ *   ويفضَّل من لم يمناوب على الموقع نفسه بعد (تدوير)
+ * - mode=fill   : يملأ الخانات الفارغة فقط (يحترم اليدوي والأسماء النصية)
+ * - mode=replace: يمسح شبكة الأسبوع كلها ثم يعيد التوزيع
+ */
+export async function autoFillDutiesAction(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("duties");
+    const weekStart = weekStartOf(new Date(String(formData.get("weekStart") ?? "")));
+    if (isNaN(weekStart.getTime())) return fail("أسبوع غير صالح");
+    const replace = formData.get("mode") === "replace";
+
+    const [settings, locations, users] = await Promise.all([
+      prisma.schoolSettings.findUnique({ where: { id: "school" } }),
+      prisma.dutyLocation.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+      prisma.user.findMany({
+        where: { role: { in: ["teacher", "staff", "admin"] }, isActive: true },
+        select: { id: true },
+      }),
+    ]);
+    const weekDays = (settings?.weekDays ?? [1, 2, 3, 4, 5]).slice().sort();
+    if (!locations.length) return fail("لا مواقع إشراف نشطة");
+    if (!users.length) return fail("لا مناوبين نشطين");
+
+    if (replace) await prisma.dutyAssignment.deleteMany({ where: { weekStart } });
+
+    // الخانات المحجوزة: مرتبطة بمستخدم أو باسم نصي (بقايا «البرنامج المدرسي»)
+    const existing = await prisma.dutyAssignment.findMany({
+      where: { weekStart },
+      select: { locationId: true, dayOfWeek: true, teacherId: true, label: true },
+    });
+    const filled = new Set(existing.filter((e) => e.teacherId || e.label).map((e) => `${e.locationId}|${e.dayOfWeek}`));
+
+    // خلط أولي لكسر التعادل عشوائياً بين أصحاب الحمل المتساوي
+    const pool = users.map((u) => u.id).sort(() => Math.random() - 0.5);
+    const weekCount = new Map(pool.map((id) => [id, 0]));
+    const dayTaken = new Set<string>();
+    const locTaken = new Set<string>();
+    // الاختيارات اليدوية الموجودة تُحسب ضمن العدالة
+    for (const e of existing) {
+      if (!e.teacherId) continue;
+      weekCount.set(e.teacherId, (weekCount.get(e.teacherId) ?? 0) + 1);
+      dayTaken.add(`${e.teacherId}|${e.dayOfWeek}`);
+      locTaken.add(`${e.teacherId}|${e.locationId}`);
+    }
+
+    const load = (id: string) => weekCount.get(id) ?? 0;
+    let assigned = 0;
+    for (const d of weekDays) {
+      for (const l of locations) {
+        if (filled.has(`${l.id}|${d}`)) continue;
+        const pick =
+          pool
+            .filter((id) => !dayTaken.has(`${id}|${d}`))
+            .sort(
+              (a, b) =>
+                load(a) - load(b) ||
+                Number(locTaken.has(`${a}|${l.id}`)) - Number(locTaken.has(`${b}|${l.id}`))
+            )[0] ??
+          // الكل مناوب هذا اليوم (مواقع > مناوبين) — يُسند للأقل حملاً إجمالاً
+          pool.slice().sort((a, b) => load(a) - load(b))[0];
+        if (!pick) break;
+        await prisma.dutyAssignment.upsert({
+          where: { weekStart_dayOfWeek_locationId: { weekStart, dayOfWeek: d, locationId: l.id } },
+          create: { weekStart, dayOfWeek: d, locationId: l.id, teacherId: pick },
+          update: { teacherId: pick, label: null },
+        });
+        weekCount.set(pick, load(pick) + 1);
+        dayTaken.add(`${pick}|${d}`);
+        locTaken.add(`${pick}|${l.id}`);
+        assigned++;
+      }
+    }
+    refresh();
+    return { ok: true, message: assigned ? `عُبّئت ${assigned} خانة — راجع الشبكة وعدّل ما تشاء` : "كل الخانات معبّأة" };
+  } catch {
+    return fail("تعذرت التعبئة التلقائية");
+  }
+}
+
 /** ينسخ مناوبات أسبوع سابق إلى الأسبوع المعروض — يبدّل الموجود */
 export async function copyWeekDutiesAction(formData: FormData): Promise<Result> {
   try {

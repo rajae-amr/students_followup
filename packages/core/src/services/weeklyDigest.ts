@@ -52,7 +52,7 @@ export async function generateWeeklyDigests(input?: {
 
   // طلاب نشطون لهم أولياء أمور موثقون
   const links = await prisma.guardianStudent.findMany({
-    where: { verified: true, student: { isActive: true } },
+    where: { verified: true, canViewReports: true, student: { isActive: true } },
     include: {
       student: { select: { id: true } },
       guardian: {

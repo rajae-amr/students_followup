@@ -46,8 +46,26 @@ model User {
   auditEvents     AuditEvent[]
   weeklyPlans     WeeklyPlan[]
   dutyAssignments DutyAssignment[]
+  notifications   Notification[]
+  announcements   Announcement[]
 
   @@map("users")
+}
+
+/// إشعارات داخلية — الجرس ومركز الإشعارات لكل مستخدم
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String    // absence_alert | excuse_decision | plan_published | announcement | general
+  title     String
+  body      String?
+  href      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
 }
 
 model Membership {
@@ -207,6 +225,7 @@ model Subject {
   // خصائص الجدولة — من «البرنامج المدرسي»
   code          String?
   color         String?  @default("#8b5cf6")
+  gradeWeights  Json?    // أوزان أنواع التقييم — {exam:60,quiz:20,homework:10,participation:10}
   preferEarly   Boolean  @default(false) // تفضيل الحصص المبكرة
   maxPerDay     Int?     // أقصى حصص يومية لكل شعبة
   minDaysPerWeek Int?    // أدنى أيام ظهور المادة لكل شعبة
@@ -244,6 +263,7 @@ model Student {
   evaluations       Evaluation[]
   reportSnapshots   ReportSnapshot[]
   reportViews       ReportViewEvent[]
+  excuses           Excuse[]
 
   @@index([isActive])
   @@map("students")
@@ -276,6 +296,7 @@ model GuardianProfile {
   createdAt       DateTime @default(now())
 
   children GuardianStudent[]
+  excuses  Excuse[]
 
   @@map("guardian_profiles")
 }
@@ -620,6 +641,7 @@ model Assessment {
   kind        String    @default("quiz") // quiz | homework | exam | participation
   date        DateTime  @db.Date
   maxScore    Float
+  publishedAt DateTime? // null = مسودة — لا تدخل التقارير ولا بوابة الأهل
   createdAt   DateTime  @default(now())
 
   grades Grade[]
@@ -636,6 +658,7 @@ model Grade {
   studentId    String
   student      Student    @relation(fields: [studentId], references: [id])
   score        Float?
+  status       String     @default("normal") // normal | absent | excused | exempt
   note         String?
   updatedAt    DateTime   @updatedAt
 
@@ -669,6 +692,7 @@ enum ReportStatus {
   approved
   sent
   failed
+  cancelled
 }
 
 model ReportSnapshot {
@@ -897,4 +921,40 @@ model DutyAssignment {
   @@unique([weekStart, dayOfWeek, locationId])
   @@index([teacherId, weekStart])
   @@map("duty_assignments")
+}
+
+// ============ الأعذار والإعلانات ============
+
+/// عذر غياب إلكتروني — يقدّمه ولي الأمر وتبتّه الإدارة
+model Excuse {
+  id          String          @id @default(cuid())
+  studentId   String
+  student     Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianId  String
+  guardian    GuardianProfile @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  date        DateTime        @db.Date
+  reason      String
+  status      String          @default("pending") // pending | approved | rejected
+  decidedById String?
+  decidedAt   DateTime?
+  note        String? // ملاحظة الإدارة عند القرار
+  createdAt   DateTime        @default(now())
+
+  @@unique([studentId, date])
+  @@index([status, createdAt])
+  @@map("excuses")
+}
+
+/// إعلان مدرسي — يظهر في بوابة الجمهور المستهدف ويولّد إشعارات
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  audience    String   @default("all") // all | guardians | teachers
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("announcements")
 }

@@ -181,3 +181,6 @@ export default async function AdminPlansPage({
     </div>
   );
 }
+
+export const metadata = { title: "الخطط الأسبوعية" };
+

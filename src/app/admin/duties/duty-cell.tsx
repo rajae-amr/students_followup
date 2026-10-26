@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { setDutyAction } from "@/server/actions/duties";
 
-type Option = { id: string; name: string };
+type Option = { id: string; name: string; group?: string };
 
 /** خلية مناوبة: قائمة معلمين لـ(موقع × يوم × أسبوع) — «—» تمسحها */
 export function DutyCell({
@@ -54,9 +54,17 @@ export function DutyCell({
         {teacherId && teacherName && !options.some((o) => o.id === teacherId) && (
           <option value={teacherId}>{teacherName} (موقوف)</option>
         )}
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>{o.name}</option>
-        ))}
+        {options.some((o) => o.group)
+          ? [...new Set(options.map((o) => o.group ?? ""))].map((g) => (
+              <optgroup key={g} label={g}>
+                {options.filter((o) => (o.group ?? "") === g).map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </optgroup>
+            ))
+          : options.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
       </select>
     </div>
   );

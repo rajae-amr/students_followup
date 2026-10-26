@@ -1,14 +1,13 @@
 import { requirePerm } from "@/server/session";
 import { prisma } from "@app/db";
 import type { Prisma } from "@prisma/client";
-import { addClass, updateClass, deleteClass, setClassActive, moveClassStudents } from "@/server/actions/admin";
+import { addClass, updateClass, deleteClass, setClassActive, moveClassStudents, addGradeLevel, renameGradeLevel, moveGradeLevel, deleteGradeLevel } from "@/server/actions/admin";
 import { FormWithResult } from "@/components/form-result";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
-import Link from "next/link";
 
 const input =
   "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100";
@@ -107,6 +106,43 @@ export default async function ClassesPage() {
         </p>
       </Card>
 
+      {/* المستويات الصفية */}
+      <Card className="mb-6 p-4">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-700">
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-50 text-violet-600">
+            <Icon.grades className="h-4 w-4" />
+          </span>
+          المستويات الصفية
+          <Badge tone="slate">{grades.length}</Badge>
+        </h2>
+        <ul className="mb-3 space-y-1.5">
+          {grades.map((g, i) => (
+            <li key={g.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5 ring-1 ring-slate-100">
+              <span className="flex shrink-0 flex-col">
+                <FormWithResult action={moveGradeLevel} bare buttonClass="text-[10px] leading-none text-slate-400 hover:text-brand-600 disabled:opacity-30" submitLabel={i === 0 ? "·" : "▲"}>
+                  <input type="hidden" name="id" value={g.id} />
+                  <input type="hidden" name="dir" value="-1" />
+                </FormWithResult>
+                <FormWithResult action={moveGradeLevel} bare buttonClass="text-[10px] leading-none text-slate-400 hover:text-brand-600" submitLabel={i === grades.length - 1 ? "·" : "▼"}>
+                  <input type="hidden" name="id" value={g.id} />
+                  <input type="hidden" name="dir" value="1" />
+                </FormWithResult>
+              </span>
+              <FormWithResult action={renameGradeLevel} submitLabel="حفظ" bare className="flex flex-1 items-center gap-2">
+                <input type="hidden" name="id" value={g.id} />
+                <input name="name" defaultValue={g.name} required className={`${smInput} font-semibold`} />
+              </FormWithResult>
+              <FormWithResult action={deleteGradeLevel} submitLabel="حذف" bare buttonClass="text-xs font-semibold text-red-400 hover:text-red-600">
+                <input type="hidden" name="id" value={g.id} />
+              </FormWithResult>
+            </li>
+          ))}
+        </ul>
+        <FormWithResult action={addGradeLevel} submitLabel="+ مستوى جديد" className="border-t border-slate-100 pt-3">
+          <input name="name" placeholder="اسم المستوى — مثال: الصف السابع" required className={`${input} flex-1`} />
+        </FormWithResult>
+      </Card>
+
       {classes.length === 0 ? (
         <EmptyState icon="school" title="لا صفوف نشطة" hint="أضف أول صف من النموذج أعلاه" />
       ) : (
@@ -187,12 +223,6 @@ export default async function ClassesPage() {
                             <input type="hidden" name="id" value={c.id} />
                           </FormWithResult>
                         )}
-                        <Link
-                          href={`/admin/students/${c.id}`}
-                          className="ms-auto text-xs font-bold text-brand-600 transition hover:text-brand-700"
-                        >
-                          فتح الطلاب ←
-                        </Link>
                       </div>
                     </div>
                   </Card>
@@ -252,3 +282,6 @@ export default async function ClassesPage() {
     </div>
   );
 }
+
+export const metadata = { title: "إدارة الصفوف" };
+

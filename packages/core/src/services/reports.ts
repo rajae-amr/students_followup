@@ -14,7 +14,7 @@ import {
 import type { Actor } from "../permissions";
 import { DAY_STATUS_AR, LESSON_STATUS_AR } from "../attendance/derive";
 import { StateError } from "../attendance/service";
-import { academicStats } from "./grades";
+import { academicStats, parseGradeWeights } from "./grades";
 
 export interface StudentReportContent {
   student: { id: string; name: string; className: string | null };
@@ -37,7 +37,7 @@ export interface StudentReportContent {
   grades: {
     subject: string;
     teacher: string;
-    assessments: { title: string; kind: string; date: string; score: number | null; max: number }[];
+    assessments: { title: string; kind: string; date: string; score: number | null; status: string; max: number }[];
   }[];
   evaluations: { subject: string; teacher: string; category: string; value: string }[];
   behavior: { date: string; teacher: string; category: string | null; text: string | null }[];
@@ -123,12 +123,13 @@ export async function buildStudentReport(
     prisma.grade.findMany({
       where: {
         studentId,
-        assessment: { date: { gte: rangeStart, lte: rangeEnd } },
+        // المنشور فقط — المسودات مرحلة عمل داخلية للمعلم
+        assessment: { publishedAt: { not: null }, date: { gte: rangeStart, lte: rangeEnd } },
       },
       include: {
         assessment: {
           include: {
-            subject: { select: { name: true } },
+            subject: { select: { name: true, id: true, gradeWeights: true } },
           },
         },
       },
@@ -175,13 +176,18 @@ export async function buildStudentReport(
     else if (s.status === "present") byStatus.present++;
   }
 
+  // أوزان المواد — تُقرأ مرة لكل تقرير وتُمرّر للإحصاء الموزون
+  const subjectWeights = new Map<string, unknown>();
+  for (const g of grades) subjectWeights.set(g.assessment.subjectId, g.assessment.subject.gradeWeights);
+
   // تجميع الدرجات بحسب (المادة + المعلم) — لا دمج بين معلمين
-  const gradeGroups = new Map<string, StudentReportContent["grades"][number]>();
+  const gradeGroups = new Map<string, StudentReportContent["grades"][number] & { subjectId: string }>();
   for (const g of grades) {
     const key = `${g.assessment.subjectId}:${g.assessment.teacherId}`;
     let group = gradeGroups.get(key);
     if (!group) {
       group = {
+        subjectId: g.assessment.subjectId,
         subject: g.assessment.subject.name,
         teacher: teacherName.get(g.assessment.teacherId) ?? "غير موثق",
         assessments: [],
@@ -193,6 +199,7 @@ export async function buildStudentReport(
       kind: g.assessment.kind,
       date: g.assessment.date.toISOString().slice(0, 10),
       score: g.score,
+      status: g.status,
       max: g.assessment.maxScore,
     });
   }
@@ -202,7 +209,8 @@ export async function buildStudentReport(
   const autoEvals: StudentReportContent["evaluations"] = [];
   for (const group of gradeGroups.values()) {
     const stats = academicStats(
-      group.assessments.map((a) => ({ score: a.score, max: a.max, kind: a.kind })),
+      group.assessments.map((a) => ({ score: a.score, max: a.max, kind: a.kind, status: a.status })),
+      parseGradeWeights(subjectWeights.get(group.subjectId ?? "")),
     );
     if (!stats) continue;
     autoEvals.push(
@@ -302,7 +310,8 @@ export async function queueReportDelivery(
     throw new StateError("التقرير غير معتمد بعد");
 
   const guardians = await prisma.guardianStudent.findMany({
-    where: { studentId: report.studentId, verified: true },
+    // canViewReports=false يمنع الإرسال أيضاً — لا حصر على العرض فقط
+    where: { studentId: report.studentId, verified: true, canViewReports: true },
     include: {
       guardian: {
         include: { user: { select: { telegramChatId: true, isActive: true } } },

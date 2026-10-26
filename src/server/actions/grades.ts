@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@app/db";
 import {
-  createAssessment, setGrade, setEvaluation, weekStartOf,
+  createAssessment, setGrade, bulkSetGrades, setEvaluation, weekStartOf,
   recordBehavior, addNote,
+  updateAssessment, deleteAssessment, publishAssessment,
+  GRADE_STATUSES, type GradeStatus,
 } from "@app/core";
 import { requireRole } from "../session";
 
@@ -24,6 +26,7 @@ export async function createAssessmentAction(formData: FormData): Promise<Result
       kind: (String(formData.get("kind") ?? "quiz")) as "quiz",
       date: new Date(`${String(formData.get("date"))}T00:00:00.000Z`),
       maxScore: Number(formData.get("maxScore")),
+      publish: formData.get("publish") === "on" || formData.get("publish") === "true",
     });
     revalidatePath("/teacher/grades");
     return { ok: true };
@@ -32,20 +35,120 @@ export async function createAssessmentAction(formData: FormData): Promise<Result
   }
 }
 
+export async function updateAssessmentAction(formData: FormData): Promise<Result> {
+  try {
+    const actor = await requireRole("teacher", "admin");
+    await updateAssessment(actor, {
+      id: String(formData.get("id") ?? ""),
+      title: String(formData.get("title") ?? "") || undefined,
+      kind: (String(formData.get("kind") ?? "") || undefined) as "quiz" | undefined,
+      date: formData.get("date") ? new Date(`${String(formData.get("date"))}T00:00:00.000Z`) : undefined,
+      maxScore: formData.get("maxScore") ? Number(formData.get("maxScore")) : undefined,
+      termId: formData.has("termId") ? (String(formData.get("termId") ?? "") || null) : undefined,
+    });
+    revalidatePath("/teacher/grades");
+    return { ok: true, message: "حُدّث التقييم" };
+  } catch (e) {
+    return wrap(e, "تعذر تحديث التقييم");
+  }
+}
+
+export async function deleteAssessmentAction(formData: FormData): Promise<Result> {
+  try {
+    const actor = await requireRole("teacher", "admin");
+    await deleteAssessment(actor, { id: String(formData.get("id") ?? "") });
+    revalidatePath("/teacher/grades");
+    return { ok: true, message: "حُذف التقييم ودرجاته" };
+  } catch (e) {
+    return wrap(e, "تعذر حذف التقييم");
+  }
+}
+
+/** نشر التقييم (يدخل التقارير وبوابة الأهل) أو إعادته مسودة */
+export async function publishAssessmentAction(formData: FormData): Promise<Result> {
+  try {
+    const actor = await requireRole("teacher", "admin");
+    const publish = formData.get("publish") === "true";
+    await publishAssessment(actor, { id: String(formData.get("id") ?? ""), publish });
+    revalidatePath("/teacher/grades");
+    return { ok: true, message: publish ? "نُشر — سيظهر في التقارير" : "أُعيد مسودة" };
+  } catch (e) {
+    return wrap(e, "تعذر تغيير حالة النشر");
+  }
+}
+
 export async function setGradeAction(formData: FormData): Promise<Result> {
   try {
     const actor = await requireRole("teacher", "admin");
     const raw = String(formData.get("score") ?? "").trim();
+    const statusRaw = String(formData.get("status") ?? "normal").trim();
+    const status = (GRADE_STATUSES as readonly string[]).includes(statusRaw)
+      ? (statusRaw as GradeStatus)
+      : "normal";
     await setGrade(actor, {
       assessmentId: String(formData.get("assessmentId") ?? ""),
       studentId: String(formData.get("studentId") ?? ""),
       score: raw === "" ? null : Number(raw),
+      status,
       note: String(formData.get("note") ?? "") || undefined,
     });
     revalidatePath("/teacher/grades");
     return { ok: true };
   } catch (e) {
     return wrap(e, "تعذر حفظ الدرجة");
+  }
+}
+
+/** تعبئة عمود تقييم بالكامل — mode: fill (بالعظمى) | clear (مسح) | absent (الكل غائب) */
+export async function fillColumnAction(formData: FormData): Promise<Result> {
+  try {
+    const actor = await requireRole("teacher", "admin");
+    const assessmentId = String(formData.get("assessmentId") ?? "");
+    const mode = String(formData.get("mode") ?? "");
+    if (!["fill", "clear", "absent"].includes(mode)) return fail("وضع غير معروف");
+
+    const assessment = await prisma.assessment.findUnique({ where: { id: assessmentId } });
+    if (!assessment) return fail("التقييم غير موجود");
+    const year = await prisma.academicYear.findFirst({ where: { isCurrent: true } });
+    const roster = await prisma.enrollment.findMany({
+      where: { classId: assessment.classId, academicYearId: year?.id, student: { isActive: true } },
+      select: { studentId: true },
+    });
+    const rows = roster.map((e) => ({
+      studentId: e.studentId,
+      ...(mode === "fill"
+        ? { score: assessment.maxScore, status: "normal" as GradeStatus }
+        : mode === "absent"
+          ? { score: null, status: "absent" as GradeStatus }
+          : { score: null, status: "normal" as GradeStatus }),
+    }));
+    const saved = await bulkSetGrades(actor, { assessmentId, rows });
+    revalidatePath("/teacher/grades");
+    const msg = mode === "fill" ? `مُلئت ${saved} خلية بالعظمى` : mode === "absent" ? `عُلّم ${saved} طالباً غائباً` : `مُسحت ${saved} خلية`;
+    return { ok: true, message: msg };
+  } catch (e) {
+    return wrap(e, "تعذر تنفيذ العملية");
+  }
+}
+
+/** لصق عمود درجات — rows JSON: [{studentId, score}] أو نص أسطر مرتب بترتيب الكشف */
+export async function setGradeColumnAction(formData: FormData): Promise<Result> {
+  try {
+    const actor = await requireRole("teacher", "admin");
+    const assessmentId = String(formData.get("assessmentId") ?? "");
+    const rowsRaw = String(formData.get("rows") ?? "");
+    let rows: { studentId: string; score: number | null; status?: GradeStatus }[];
+    try {
+      rows = JSON.parse(rowsRaw);
+    } catch {
+      return fail("تنسيق البيانات غير صالح");
+    }
+    if (!Array.isArray(rows)) return fail("تنسيق البيانات غير صالح");
+    const saved = await bulkSetGrades(actor, { assessmentId, rows });
+    revalidatePath("/teacher/grades");
+    return { ok: true, message: `حُفظت ${saved} درجة` };
+  } catch (e) {
+    return wrap(e, "تعذر لصق الدرجات");
   }
 }
 

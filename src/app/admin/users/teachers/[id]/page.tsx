@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/server/session";
 import { prisma } from "@app/db";
@@ -66,12 +65,15 @@ export default async function TeacherDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Link href="/admin/users/teachers" className="mb-2 inline-block text-xs font-bold text-brand-600 hover:underline">
-        ← المعلمون
-      </Link>
       <PageHeader
         title={teacher.name}
         subtitle={`${teacher.username ?? ""} · ${profile?.specialization ?? profile?.defaultSubject ?? "بلا تخصص"}${teacher.isActive ? "" : " · موقوف"}`}
+        crumbs={[
+          { label: "النظام" },
+          { label: "المستخدمون", href: "/admin/users" },
+          { label: "المعلمون", href: "/admin/users/teachers" },
+          { label: teacher.name },
+        ]}
       />
 
       {/* بطاقة الحمل */}

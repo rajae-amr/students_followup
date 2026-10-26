@@ -6,11 +6,17 @@ export function StatCard({
   value,
   icon,
   tone = "brand",
+  delta,
+  hint,
 }: {
   label: string;
   value: string | number;
   icon: IconName;
   tone?: "brand" | "accent" | "emerald" | "red" | "violet" | "amber" | "slate";
+  /** فرق مئوي مقابل الفترة السابقة — موجب أخضر وسالب أحمر */
+  delta?: number | null;
+  /** سطر توضيحي صغير تحت العنوان */
+  hint?: string;
 }) {
   const tones: Record<string, string> = {
     brand: "bg-brand-50 text-brand-700",
@@ -27,9 +33,19 @@ export function StatCard({
       <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ${tones[tone]}`}>
         <I className="h-6 w-6" />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="text-2xl font-bold tabular-nums text-slate-900">{value}</p>
         <p className="truncate text-sm text-slate-500">{label}</p>
+        {(delta !== undefined && delta !== null) || hint ? (
+          <p className="mt-0.5 truncate text-xs">
+            {delta !== undefined && delta !== null && (
+              <span className={`font-bold ${delta >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                {delta >= 0 ? "▲" : "▼"} {Math.abs(delta)}%
+              </span>
+            )}
+            {hint && <span className="mr-1 text-slate-400">{hint}</span>}
+          </p>
+        ) : null}
       </div>
     </div>
   );

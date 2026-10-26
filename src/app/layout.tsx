@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cairo } from "next/font/google";
 import "./globals.css";
 
@@ -10,8 +10,14 @@ const arabic = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "نظام متابعة الطلاب",
+  title: { default: "نظام متابعة الطلاب", template: "%s — نظام متابعة الطلاب" },
   description: "متابعة الحضور والسلوك والدرجات والتواصل مع أولياء الأمور",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0d9488",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({

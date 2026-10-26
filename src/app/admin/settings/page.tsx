@@ -2,6 +2,7 @@ import { prisma } from "@app/db";
 import { requireRole } from "@/server/session";
 import {
   updateSettings, addTerm, deleteTerm, setCalendarDay, clearCalendarDay,
+  addAcademicYear, updateAcademicYear, setCurrentAcademicYear, deleteAcademicYear,
 } from "@/server/actions/admin";
 import { FormWithResult } from "@/components/form-result";
 import { PageHeader } from "@/components/ui/page-header";
@@ -16,9 +17,10 @@ const lbl = "block text-sm font-medium text-slate-600";
 
 export default async function SettingsPage() {
   await requireRole("admin");
-  const [settings, year, terms, calendarDays] = await Promise.all([
+  const [settings, year, allYears, terms, calendarDays] = await Promise.all([
     prisma.schoolSettings.findUnique({ where: { id: "school" } }),
     prisma.academicYear.findFirst({ where: { isCurrent: true } }),
+    prisma.academicYear.findMany({ orderBy: { startDate: "desc" } }),
     prisma.term.findMany({
       where: { academicYear: { isCurrent: true } },
       orderBy: { startDate: "asc" },
@@ -44,6 +46,83 @@ export default async function SettingsPage() {
       )}
 
       <div className="space-y-4">
+        {/* الأعوام الدراسية */}
+        <Card>
+          <h2 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
+            <Icon.schedule className="h-5 w-5 text-violet-600" />
+            الأعوام الدراسية
+            <Badge tone="violet">{allYears.length}</Badge>
+          </h2>
+          <ul className="mb-4 divide-y divide-slate-100">
+            {allYears.map((y) => (
+              <li key={y.id} className="py-2.5">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-bold text-slate-800">{y.name}</span>
+                  <span className="text-xs text-slate-400" dir="ltr">
+                    {y.startDate.toISOString().slice(0, 10)} — {y.endDate.toISOString().slice(0, 10)}
+                  </span>
+                  {y.isCurrent ? (
+                    <Badge tone="emerald">العام الحالي</Badge>
+                  ) : (
+                    <FormWithResult
+                      action={setCurrentAcademicYear} submitLabel="تفعيل كحالي" bare
+                      buttonClass="text-xs font-semibold text-brand-600 hover:text-brand-700"
+                    >
+                      <input type="hidden" name="id" value={y.id} />
+                    </FormWithResult>
+                  )}
+                  <FormWithResult
+                    action={deleteAcademicYear} submitLabel="حذف" bare
+                    buttonClass="text-xs font-semibold text-red-400 hover:text-red-600"
+                  >
+                    <input type="hidden" name="id" value={y.id} />
+                  </FormWithResult>
+                </div>
+                <details className="mt-1">
+                  <summary className="w-fit cursor-pointer text-xs font-semibold text-brand-600 hover:text-brand-700">
+                    تعديل البيانات
+                  </summary>
+                  <FormWithResult
+                    action={updateAcademicYear} submitLabel="حفظ"
+                    className="mt-2 flex flex-wrap items-end gap-2"
+                  >
+                    <input type="hidden" name="id" value={y.id} />
+                    <label className="text-xs font-medium text-slate-500">الاسم
+                      <input name="name" required defaultValue={y.name} className={`${input} mt-1 block`} />
+                    </label>
+                    <label className="text-xs font-medium text-slate-500">من
+                      <input name="startDate" type="date" required defaultValue={y.startDate.toISOString().slice(0, 10)} className={`${input} mt-1 block`} />
+                    </label>
+                    <label className="text-xs font-medium text-slate-500">إلى
+                      <input name="endDate" type="date" required defaultValue={y.endDate.toISOString().slice(0, 10)} className={`${input} mt-1 block`} />
+                    </label>
+                  </FormWithResult>
+                </details>
+              </li>
+            ))}
+          </ul>
+          <FormWithResult action={addAcademicYear} submitLabel="+ عام جديد" className="border-t border-slate-100 pt-4">
+            <div className="grid w-full gap-3 sm:grid-cols-4">
+              <label className="text-xs font-medium text-slate-500">الاسم — مثال 2027/2028
+                <input name="name" required placeholder="2027/2028" dir="ltr" className={`${input} mt-1 block w-full`} />
+              </label>
+              <label className="text-xs font-medium text-slate-500">من
+                <input name="startDate" type="date" required className={`${input} mt-1 block w-full`} />
+              </label>
+              <label className="text-xs font-medium text-slate-500">إلى
+                <input name="endDate" type="date" required className={`${input} mt-1 block w-full`} />
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 self-end rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 has-[:checked]:border-brand-300 has-[:checked]:bg-brand-50 has-[:checked]:text-brand-700">
+                <input type="checkbox" name="isCurrent" className="h-4 w-4 accent-brand-600" />
+                عام حالي فوراً
+              </label>
+            </div>
+          </FormWithResult>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+            كل العمليات (إسنادات، تسجيلات، جدولة) تُربط بالعام «الحالي» — غيّره فقط عند بداية عام جديد.
+          </p>
+        </Card>
+
         {/* الإعدادات العامة */}
         <Card>
           <h2 className="mb-4 flex items-center gap-2 font-bold text-slate-800">
@@ -192,3 +271,6 @@ export default async function SettingsPage() {
     </div>
   );
 }
+
+export const metadata = { title: "الإعدادات" };
+

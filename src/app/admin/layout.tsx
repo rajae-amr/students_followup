@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { requireRole, getStaffPerms } from "@/server/session";
 import { prisma } from "@app/db";
 import { AppShell } from "@/components/app-shell";
 import { ADMIN_LINKS } from "@/components/nav-links";
+
+export const metadata: Metadata = { title: "لوحة الإدارة" };
 
 export default async function AdminLayout({
   children,

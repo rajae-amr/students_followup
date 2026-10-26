@@ -4,6 +4,7 @@ import { requirePerm } from "@/server/session";
 import { prisma } from "@app/db";
 import { weekStartOf, DAY_NAMES } from "@app/core";
 import {
+  autoFillDutiesAction,
   copyWeekDutiesAction,
   saveDutyLocationAction,
   toggleDutyLocationAction,
@@ -40,7 +41,12 @@ export default async function DutiesPage({
   const [settings, locations, teachers, duties, allLocations] = await Promise.all([
     prisma.schoolSettings.findUnique({ where: { id: "school" } }),
     prisma.dutyLocation.findMany({ where: { isActive: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.user.findMany({ where: { role: "teacher", isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    // المناوبة تشمل المعلمين والإداريين والمدير — مرتّبون بمجموعات في القائمة
+    prisma.user.findMany({
+      where: { role: { in: ["teacher", "staff", "admin"] }, isActive: true },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, role: true },
+    }),
     prisma.dutyAssignment.findMany({ where: { weekStart }, include: { teacher: { select: { name: true } } } }),
     prisma.dutyLocation.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
@@ -52,7 +58,8 @@ export default async function DutiesPage({
 
   // تجميع المواقع حسب مجموعتها (دور أرضي/أول/عام) — بترتيب ظهورها
   const groups = [...new Set(locations.map((l) => l.group ?? "مواقع عامة"))];
-  const opts = teachers.map((t) => ({ id: t.id, name: t.name }));
+  const ROLE_GROUP: Record<string, string> = { admin: "الإدارة", staff: "الإدارة", teacher: "المعلمون" };
+  const opts = teachers.map((t) => ({ id: t.id, name: t.name, group: ROLE_GROUP[t.role] ?? "المعلمون" }));
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -80,6 +87,17 @@ export default async function DutiesPage({
               className="rounded-xl bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700">
               🖨 طباعة الكشف
             </Link>
+            <FormWithResult action={autoFillDutiesAction} submitLabel="⚡ تعبئة الفارغ" bare
+              buttonClass="rounded-xl bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700">
+              <input type="hidden" name="weekStart" value={iso(weekStart)} />
+              <input type="hidden" name="mode" value="fill" />
+            </FormWithResult>
+            <FormWithResult action={autoFillDutiesAction} submitLabel="↺ إعادة التعبئة" bare
+              confirm="ستُمسح مناوبات هذا الأسبوع كلها (بما فيها المعدّلة يدوياً) ويُعاد التوزيع — متابعة؟"
+              buttonClass="rounded-xl bg-brand-50 px-4 py-2 text-sm font-bold text-brand-700 ring-1 ring-brand-200 hover:bg-brand-100">
+              <input type="hidden" name="weekStart" value={iso(weekStart)} />
+              <input type="hidden" name="mode" value="replace" />
+            </FormWithResult>
             <FormWithResult action={copyWeekDutiesAction} submitLabel="⧉ نسخ مناوبات الأسبوع الماضي" bare
               buttonClass="rounded-xl bg-accent-50 px-4 py-2 text-sm font-bold text-accent-700 ring-1 ring-accent-200 hover:bg-accent-100">
               <input type="hidden" name="weekStart" value={iso(weekStart)} />
@@ -140,6 +158,26 @@ export default async function DutiesPage({
         )}
       </Card>
 
+      {/* توزيع الأسبوع — مراجعة العدالة قبل التعديل اليدوي */}
+      {duties.length > 0 && (() => {
+        const tally = new Map<string, number>();
+        for (const d of duties) {
+          const n = d.teacher?.name ?? d.label;
+          if (n) tally.set(n, (tally.get(n) ?? 0) + 1);
+        }
+        const sorted = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+        return (
+          <Card className="mb-4 !py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-500">توزيع الأسبوع:</span>
+              {sorted.map(([name, count]) => (
+                <Badge key={name} tone={count >= 3 ? "amber" : "slate"}>{name} · {count}</Badge>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
+
       {/* إدارة المواقع */}
       <Card>
         <h2 className="mb-1 font-bold text-slate-800">مواقع الإشراف</h2>
@@ -181,3 +219,6 @@ export default async function DutiesPage({
     </div>
   );
 }
+
+export const metadata = { title: "الإشراف" };
+

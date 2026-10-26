@@ -76,8 +76,11 @@ export default async function ClassRosterPage({
       <PageHeader
         title={cls.displayName ?? cls.name}
         subtitle={`${enrollments.length} طالباً${q ? ` — نتائج «${q}»` : ""}`}
-        backHref="/admin/students"
-        backLabel="كل الصفوف"
+        crumbs={[
+          { label: "الشؤون الأكاديمية" },
+          { label: "الطلاب", href: "/admin/students" },
+          { label: cls.displayName ?? cls.name },
+        ]}
       />
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">

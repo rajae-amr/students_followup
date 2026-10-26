@@ -7,14 +7,40 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
-import { ActionsCell, StatusCell, TelegramCell, inputClass } from "../_shared";
+import { Pagination } from "@/components/ui/pagination";
+import { ActionsCell, StatusCell, TelegramCell, SearchBar, inputClass } from "../_shared";
 
-export default async function AdminsPage() {
+const PAGE_SIZE = 25;
+
+export default async function AdminsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
   await requireRole("admin");
-  const admins = await prisma.user.findMany({
-    where: { role: "admin" },
-    orderBy: { createdAt: "asc" },
-  });
+  const { q = "", page: pageStr } = await searchParams;
+  const page = Math.max(1, Number(pageStr) || 1);
+  const query = q.trim();
+  const where = {
+    role: "admin" as const,
+    ...(query && {
+      OR: [
+        { name: { contains: query, mode: "insensitive" as const } },
+        { username: { contains: query, mode: "insensitive" as const } },
+        { phone: { contains: query } },
+      ],
+    }),
+  };
+  const [admins, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.user.count({ where }),
+  ]);
+  const pages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
@@ -26,8 +52,9 @@ export default async function AdminsPage() {
             <Icon.users className="h-4 w-4" />
           </span>
           الإدارة
-          <Badge tone="violet">{admins.length}</Badge>
+          <Badge tone="violet">{total}</Badge>
         </h2>
+        <SearchBar q={query} placeholder="اسم المدير أو اسم المستخدم…" />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -71,9 +98,15 @@ export default async function AdminsPage() {
                   </tr>
                 </Fragment>
               ))}
+              {!admins.length && (
+                <tr><td colSpan={6} className="py-6 text-center text-sm text-slate-400">
+                  {query ? `لا نتائج لـ«${query}»` : "لا حسابات"}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pages={pages} total={total} params={{ q: query }} />
       </Card>
     </div>
   );

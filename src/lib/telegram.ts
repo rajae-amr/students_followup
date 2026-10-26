@@ -56,8 +56,12 @@ export function renderReportText(c: StudentReportContent, schoolName: string): s
     lines.push("", "— الدرجات —");
     for (const g of c.grades) {
       lines.push(`${g.subject} (${g.teacher}):`);
-      for (const a of g.assessments)
-        lines.push(`  • ${a.title} ${a.date}: ${a.score ?? "—"}/${a.max}`);
+      for (const a of g.assessments) {
+        const mark = a.status !== "normal"
+          ? { absent: "غائب", excused: "غائب بعذر", exempt: "معفى" }[a.status] ?? "—"
+          : `${a.score ?? "—"}/${a.max}`;
+        lines.push(`  • ${a.title} ${a.date}: ${mark}`);
+      }
     }
   }
 

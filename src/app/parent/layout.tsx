@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { requireRole } from "@/server/session";
 import { prisma } from "@app/db";
 import { AppShell } from "@/components/app-shell";
 import { GUARDIAN_LINKS } from "@/components/nav-links";
+
+export const metadata: Metadata = { title: "بوابة ولي الأمر" };
 
 export default async function ParentLayout({
   children,

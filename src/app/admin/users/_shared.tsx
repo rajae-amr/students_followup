@@ -33,6 +33,29 @@ export function UsersTabs() {
   );
 }
 
+/** شريط بحث GET — يحافظ على الاستعلام عبر معامل ?q= */
+export function SearchBar({ q, placeholder }: { q: string; placeholder: string }) {
+  return (
+    <form method="GET" className="mb-3 flex gap-2">
+      <div className="relative flex-1 sm:max-w-xs">
+        <Icon.search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+        <input
+          name="q" defaultValue={q} placeholder={placeholder}
+          className="w-full rounded-xl border border-slate-200 bg-white py-2 pe-3 ps-9 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+        />
+      </div>
+      <button type="submit" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-brand-700">
+        بحث
+      </button>
+      {q && (
+        <a href="?" className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50">
+          مسح
+        </a>
+      )}
+    </form>
+  );
+}
+
 export function StatusCell({ u }: { u: { isActive: boolean } }) {
   return (
     <td>

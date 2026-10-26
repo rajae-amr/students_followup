@@ -70,3 +70,6 @@ export default async function UsersOverview() {
     </div>
   );
 }
+
+export const metadata = { title: "المستخدمون" };
+

@@ -52,7 +52,22 @@ export function NavGroups({
   );
 }
 
-/** درج الجوال المنزلق — هامبرغر + خلفية مموّهة + إغلاق بالخارج/Escape/عند التنقل */
+/** زر الهامبرغر — يبث حدث فتح الدرج (يبقى داخل الترويسة التي تحجب fixed بـbackdrop-blur) */
+export function NavDrawerTrigger() {
+  return (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new Event("open-nav-drawer"))}
+      aria-controls="side-nav"
+      aria-label="فتح القائمة"
+      className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-600 transition hover:bg-slate-100"
+    >
+      <Icon.menu className="h-5 w-5" />
+    </button>
+  );
+}
+
+/** درج الجوال المنزلق — يُركَّب في جذع الصفحة خارج الترويسة ليعمل fixed على الشاشة كاملة */
 export function NavDrawer({
   links,
   brand,
@@ -67,6 +82,11 @@ export function NavDrawer({
 
   useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
+    const onCustom = () => setOpen(true);
+    window.addEventListener("open-nav-drawer", onCustom);
+    return () => window.removeEventListener("open-nav-drawer", onCustom);
+  }, []);
+  useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("keydown", onKey);
@@ -79,16 +99,6 @@ export function NavDrawer({
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        aria-expanded={open}
-        aria-controls="side-nav"
-        aria-label="فتح القائمة"
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-slate-600 transition hover:bg-slate-100"
-      >
-        <Icon.menu className="h-5 w-5" />
-      </button>
-
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="قائمة التنقل">
           <div

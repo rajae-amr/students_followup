@@ -11,14 +11,26 @@ export const TEACHER_LINKS: ShellLink[] = [
 
 export const ADMIN_LINKS: ShellLink[] = [
   { href: "/admin", label: "لوحة التحكم", icon: "home", exact: true, perm: "dashboard" },
-  { href: "/admin/students", label: "الطلاب", icon: "students", perm: "students", group: "الشؤون الأكاديمية" },
-  { href: "/admin/classes", label: "الصفوف", icon: "school", perm: "students", group: "الشؤون الأكاديمية" },
-  { href: "/admin/attendance", label: "الحضور", icon: "attendance", perm: "attendance", group: "الشؤون الأكاديمية" },
-  { href: "/admin/plans", label: "الخطط الأسبوعية", icon: "reports", perm: "plans", group: "الشؤون الأكاديمية" },
-  { href: "/admin/reports", label: "التقارير", icon: "reports", perm: "reports", group: "الشؤون الأكاديمية" },
-  { href: "/admin/timetable", label: "الجدولة", icon: "schedule", perm: "timetable", group: "الجدولة والتنظيم" },
-  { href: "/admin/subjects", label: "المواد", icon: "book", perm: "timetable", group: "الجدولة والتنظيم" },
-  { href: "/admin/duties", label: "الإشراف", icon: "clock", perm: "duties", group: "الجدولة والتنظيم" },
+  // الهيكل الأكاديمي — من يدرّس من وماذا وأين
+  { href: "/admin/students", label: "الطلاب", icon: "students", perm: "students", group: "الهيكل الأكاديمي" },
+  { href: "/admin/classes", label: "الصفوف", icon: "school", perm: "students", group: "الهيكل الأكاديمي" },
+  { href: "/admin/subjects", label: "المواد", icon: "book", perm: "timetable", group: "الهيكل الأكاديمي" },
+  { href: "/admin/assignments", label: "الإسنادات", icon: "users", perm: "timetable", group: "الهيكل الأكاديمي" },
+  // اليوم الدراسي — ما يحدث كل يوم
+  { href: "/admin/attendance", label: "الحضور", icon: "attendance", perm: "attendance", group: "اليوم الدراسي" },
+  { href: "/admin/excuses", label: "الأعذار", icon: "check", perm: "attendance", group: "اليوم الدراسي" },
+  { href: "/admin/duties", label: "الإشراف", icon: "clock", perm: "duties", group: "اليوم الدراسي" },
+  { href: "/admin/analytics", label: "التحليلات", icon: "grades", perm: "attendance", group: "اليوم الدراسي" },
+  // التواصل والتقارير — ما يصل أولياء الأمور
+  { href: "/admin/reports", label: "توليد التقارير", icon: "reports", perm: "reports", exact: true, group: "التواصل والتقارير" },
+  { href: "/admin/reports/snapshots", label: "لقطات التقارير", icon: "reports", perm: "reports", group: "التواصل والتقارير" },
+  { href: "/admin/reports/outbox", label: "سجل الإرسال", icon: "bell", perm: "reports", group: "التواصل والتقارير" },
+  { href: "/admin/plans", label: "الخطط الأسبوعية", icon: "book", perm: "plans", group: "التواصل والتقارير" },
+  { href: "/admin/announcements", label: "الإعلانات", icon: "bell", perm: "reports", group: "التواصل والتقارير" },
+  { href: "/absence", label: "تنبيهات الغياب", icon: "warning", perm: "attendance", group: "التواصل والتقارير" },
+  // الجدولة — عملية موسمية ثقيلة
+  { href: "/admin/timetable", label: "الجدولة", icon: "schedule", perm: "timetable", group: "الجدولة" },
+  // النظام
   { href: "/admin/users", label: "المستخدمون", icon: "users", group: "النظام" },
   { href: "/admin/settings", label: "الإعدادات", icon: "settings", group: "النظام" },
 ];

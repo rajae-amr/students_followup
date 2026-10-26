@@ -22,13 +22,17 @@ export default async function AdminPage() {
     ]);
 
   const nav = [
-    { href: "/admin/students", title: "الطلاب والصفوف", subtitle: `${students} طالب في ${classes} صفاً`, icon: "students" as const },
-    { href: "/admin/schedule", title: "الجدول والإسنادات", subtitle: `${subjects} مادة`, icon: "schedule" as const },
+    { href: "/admin/students", title: "الطلاب", subtitle: `${students} طالب في ${classes} صفاً`, icon: "students" as const },
+    { href: "/admin/classes", title: "الصفوف والمستويات", subtitle: `${classes} صفاً نشطاً`, icon: "school" as const },
+    { href: "/admin/assignments", title: "الإسنادات", subtitle: `توزيع ${subjects} مادة على المعلمين`, icon: "users" as const },
     { href: "/admin/attendance", title: "سجلات الحضور", subtitle: "تصفح يومي لكل صف", icon: "attendance" as const },
+    { href: "/admin/excuses", title: "الأعذار", subtitle: "طلبات أولياء الأمور", icon: "check" as const },
+    { href: "/admin/analytics", title: "التحليلات", subtitle: "مؤشرات الحضور بيانياً", icon: "grades" as const },
     { href: "/admin/reports", title: "التقارير", subtitle: "تقارير الطلاب والتلخيص الأسبوعي", icon: "reports" as const },
-    { href: "/admin/users", title: "المستخدمون والدعوات", subtitle: `${teachers} معلم · ${guardians} ولي أمر`, icon: "users" as const },
-    { href: "/absence", title: "تنبيهات الغياب", subtitle: "إشعار أولياء الأمور", icon: "bell" as const, iconClass: "bg-red-50 text-red-600" },
-    { href: "/admin/export?class=all", title: "تصدير الحضور", subtitle: "ملف Excel أسبوعي", icon: "export" as const },
+    { href: "/admin/timetable", title: "الجدولة", subtitle: "توليد ونشر الجدول المدرسي", icon: "schedule" as const },
+    { href: "/admin/users", title: "المستخدمون", subtitle: `${teachers} معلم · ${guardians} ولي أمر`, icon: "key" as const },
+    { href: "/admin/announcements", title: "الإعلانات", subtitle: "لوحة إعلانات المدرسة", icon: "bell" as const },
+    { href: "/absence", title: "تنبيهات الغياب", subtitle: "إشعار أولياء الأمور", icon: "warning" as const, iconClass: "bg-red-50 text-red-600" },
     { href: "/admin/settings", title: "الإعدادات والتقويم", subtitle: "عتبات وفصول وأيام الدوام", icon: "settings" as const },
   ];
 

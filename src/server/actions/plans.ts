@@ -25,6 +25,7 @@ function entriesFromForm(formData: FormData): PlanEntryInput[] {
 }
 import { drainOutbox } from "@/lib/jobs/drain";
 import { requirePerm, asAdmin } from "../session";
+import { notifyUsers } from "../notify";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const fail = (error: string): Result => ({ ok: false, error });
@@ -168,6 +169,21 @@ export async function publishClassPlanAction(formData: FormData): Promise<Result
     const res = await publishClassPlan(asAdmin(actor), {
       classId, weekStart: new Date(weekStart),
     });
+    // إشعار داخلي لأولياء طلاب الصف
+    const cls = await prisma.classGroup.findUnique({ where: { id: classId }, select: { displayName: true, name: true } });
+    const links = await prisma.guardianStudent.findMany({
+      where: { verified: true, student: { enrollments: { some: { classId } } } },
+      select: { guardian: { select: { userId: true } } },
+    });
+    await notifyUsers(
+      links.map((l) => l.guardian.userId),
+      {
+        type: "plan_published",
+        title: `الخطة الأسبوعية — ${cls?.displayName ?? cls?.name ?? "الصف"}`,
+        body: `نُشرت الخطة الموحّدة (${res.subjects} مواد) — متاحة للاطلاع`,
+        href: "/parent/plans",
+      },
+    );
     revalidatePath("/admin/plans", "layout");
     after(() => drainOutbox());
     return {

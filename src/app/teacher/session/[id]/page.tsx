@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { requireRole } from "@/server/session";
 import { sessionRoster } from "@app/core";
 import { RosterClient } from "./roster-client";
@@ -28,17 +27,13 @@ export default async function SessionPage({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link
-        href="/teacher"
-        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
-      >
-        <Icon.arrowBack className="h-4 w-4" />
-        حصصي
-      </Link>
-
       <PageHeader
         title={`${s.subjectName} — الحصة ${s.period}`}
         subtitle={s.className}
+        crumbs={[
+          { label: "حصصي", href: "/teacher" },
+          { label: `كشف ${s.subjectName}` },
+        ]}
         actions={
           done ? (
             <Badge tone="emerald"><Icon.check className="h-3.5 w-3.5" /> معتمدة</Badge>

@@ -5,6 +5,7 @@
  */
 
 import { prisma } from "@app/db";
+import { notifyUsers, reportManagerIds } from "@/server/notify";
 import { sendReportJob } from "./reportSend";
 import { sendAlertJob } from "./alertSend";
 import { sendDigestJob } from "./digestSend";
@@ -31,6 +32,29 @@ export async function drainOutbox(limit = 25): Promise<number> {
     } catch (err) {
       // المحاولة مسجلة داخل المهمة — تُعاد وفق nextAttemptAt
       console.error(`[drain] فشل حدث ${e.id} (${e.type}):`, err instanceof Error ? err.message : err);
+      // انتقال نهائي للفشل (سقف المحاولات/التباس) → تنبيه مسؤولي التقارير مرة واحدة
+      try {
+        const ev = await prisma.outboxEvent.findUnique({
+          where: { id: e.id },
+          select: { status: true, lastError: true },
+        });
+        if (ev?.status === "failed") {
+          const TYPE_AR: Record<string, string> = {
+            report_send: "تقرير",
+            weekly_digest: "تلخيص أسبوعي",
+            absence_alert: "تنبيه غياب",
+            plan_notify: "إشعار خطة",
+          };
+          await notifyUsers(await reportManagerIds(), {
+            type: "delivery_failed",
+            title: `فشل نهائي في إرسال ${TYPE_AR[e.type] ?? e.type}`,
+            body: ev.lastError?.slice(0, 200) ?? "تجاوز الحدث سقف المحاولات",
+            href: "/admin/reports/outbox",
+          });
+        }
+      } catch {
+        // إشعار الفشل لا يجب أن يُسقط المسح
+      }
     }
   }
   return done;

@@ -85,8 +85,18 @@ body {
 }
 
 /* print slips: show only .print-area */
+@page { margin: 12mm; }
 @media print {
   body * { visibility: hidden; }
   .print-area, .print-area * { visibility: visible; }
-  .print-area { position: absolute; inset: 0; width: 100%; }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    /* إبقاء ألوان الشارات والجداول — المتصفحات تكبحها افتراضياً */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  /* لا تنشطر بطاقة بين صفحتين */
+  .print-area > * { break-inside: avoid-page; }
 }

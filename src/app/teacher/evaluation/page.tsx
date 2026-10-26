@@ -81,6 +81,7 @@ export default async function EvaluationPage({
             assessment: {
               teacherId: actor.userId,
               subjectId,
+              publishedAt: { not: null },
               date: { gte: weekStart, lt: weekEnd },
             },
           },
@@ -94,7 +95,7 @@ export default async function EvaluationPage({
   for (const r of roster) {
     const items = weekGrades
       .filter((g) => g.studentId === r.studentId)
-      .map((g) => ({ score: g.score, max: g.assessment.maxScore, kind: g.assessment.kind }));
+      .map((g) => ({ score: g.score, max: g.assessment.maxScore, kind: g.assessment.kind, status: g.status }));
     const s = academicStats(items);
     if (s) statsByStudent.set(r.studentId, s);
   }

@@ -8,7 +8,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
-import { ActionsCell, StatusCell, TelegramCell, inputClass } from "../_shared";
+import { Pagination } from "@/components/ui/pagination";
+import { ActionsCell, StatusCell, TelegramCell, SearchBar, inputClass } from "../_shared";
+
+const PAGE_SIZE = 25;
 
 /** صلاحيات مخصّصة لكل إداري — المدير يمنحها قسماً قسماً */
 function PermBoxes({ name = "perms", checked = [] }: { name?: string; checked?: string[] }) {
@@ -30,12 +33,35 @@ function PermBoxes({ name = "perms", checked = [] }: { name?: string; checked?: 
   );
 }
 
-export default async function StaffPage() {
+export default async function StaffPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
   await requireRole("admin");
-  const staff = await prisma.user.findMany({
-    where: { role: "staff" },
-    orderBy: { createdAt: "asc" },
-  });
+  const { q = "", page: pageStr } = await searchParams;
+  const page = Math.max(1, Number(pageStr) || 1);
+  const query = q.trim();
+  const where = {
+    role: "staff" as const,
+    ...(query && {
+      OR: [
+        { name: { contains: query, mode: "insensitive" as const } },
+        { username: { contains: query, mode: "insensitive" as const } },
+        { phone: { contains: query } },
+      ],
+    }),
+  };
+  const [staff, total] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.user.count({ where }),
+  ]);
+  const pages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
@@ -68,8 +94,9 @@ export default async function StaffPage() {
             <Icon.key className="h-4 w-4" />
           </span>
           الإداريون الحاليون
-          <Badge tone="violet">{staff.length}</Badge>
+          <Badge tone="violet">{total}</Badge>
         </h2>
+        <SearchBar q={query} placeholder="اسم الإداري أو اسم المستخدم…" />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -125,12 +152,13 @@ export default async function StaffPage() {
               ))}
               {!staff.length && (
                 <tr><td colSpan={6} className="py-6 text-center text-sm text-slate-400">
-                  لا إداريون بعد — أنشئ أول حساب من الأعلى
+                  {query ? `لا نتائج لـ«${query}»` : "لا إداريون بعد — أنشئ أول حساب من الأعلى"}
                 </td></tr>
               )}
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pages={pages} total={total} params={{ q: query }} />
         <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
           ملاحظة: «المستخدمون» و«الإعدادات» و«التقويم» تبقى للمدير فقط ولا تُفوَّض.
           الإداري بلا أي صلاحية يدخل اللوحة ولا يرى قسماً.

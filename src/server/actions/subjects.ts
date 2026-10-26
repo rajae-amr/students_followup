@@ -2,13 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@app/db";
+import { Prisma } from "@prisma/client";
 import { requirePerm } from "../session";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const fail = (error: string): Result => ({ ok: false, error });
 const refresh = () => {
   revalidatePath("/admin/subjects");
-  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/assignments");
+  revalidatePath("/admin/timetable");
 };
 
 async function currentYear() {
@@ -46,6 +48,30 @@ export async function toggleSubjectAction(formData: FormData): Promise<Result> {
     return { ok: true, message: subject.isActive ? "عُطّلت المادة" : "فُعّلت المادة" };
   } catch {
     return fail("تعذر تغيير الحالة");
+  }
+}
+
+/** أوزان أنواع التقييم للمادة — تُحفظ JSON في Subject.gradeWeights؛ القيم ≤0 تُهمل */
+export async function setSubjectWeightsAction(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("timetable");
+    const id = String(formData.get("id") ?? "");
+    if (!id) return fail("معرّف مفقود");
+    const kinds = ["exam", "quiz", "homework", "participation"] as const;
+    const weights: Record<string, number> = {};
+    for (const k of kinds) {
+      const v = Number(String(formData.get(k) ?? "").trim());
+      if (Number.isFinite(v) && v > 0) weights[k] = Math.round(v * 10) / 10;
+    }
+    await prisma.subject.update({
+      where: { id },
+      // بلا أوزان موجبة = الوضع الافتراضي (اختبار + اختبار قصير)
+      data: { gradeWeights: Object.keys(weights).length ? weights : Prisma.DbNull },
+    });
+    refresh();
+    return { ok: true, message: Object.keys(weights).length ? "حُفظت الأوزان" : "أُعيدت للوضع الافتراضي" };
+  } catch {
+    return fail("تعذر حفظ الأوزان");
   }
 }
 

@@ -110,7 +110,11 @@ export function ReportGenerator({
               <p className="text-xs font-semibold">{g.subject} — {g.teacher}</p>
               <ul className="text-xs text-slate-600">
                 {g.assessments.map((a, i) => (
-                  <li key={i}>{a.title} ({a.date}): {a.score ?? "—"} / {a.max}</li>
+                  <li key={i}>
+                    {a.title} ({a.date}): {a.status !== "normal"
+                      ? { absent: "غائب", excused: "غائب بعذر", exempt: "معفى" }[a.status] ?? "—"
+                      : `${a.score ?? "—"} / ${a.max}`}
+                  </li>
                 ))}
               </ul>
             </div>

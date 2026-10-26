@@ -86,7 +86,7 @@ export default async function CoveragePage() {
             : `${gaps} فجوة من ${cells} خلية تدريسية — الخلايا الكهرمانية تحتاج معلماً`
         }
       />
-      <Link href="/admin/subjects" className="mb-4 inline-block text-xs font-bold text-brand-600 hover:underline">
+      <Link href="/admin/assignments" className="mb-4 inline-block text-xs font-bold text-brand-600 hover:underline">
         ← رجوع للمواد والإسنادات
       </Link>
 

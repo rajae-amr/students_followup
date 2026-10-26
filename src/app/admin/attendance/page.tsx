@@ -183,3 +183,6 @@ export default async function AdminAttendance({
     </div>
   );
 }
+
+export const metadata = { title: "الحضور" };
+

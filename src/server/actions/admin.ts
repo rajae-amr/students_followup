@@ -9,6 +9,7 @@ import { auth, createGuardianAccount, createTeacherAccount, generatePassword } f
 import { generateWeeklyDigests, ADMIN_PERMS, parseStudentsXlsx, parseTeachersXlsx } from "@app/core";
 import { hashPassword } from "better-auth/crypto";
 import { requireRole, requirePerm, requireActor } from "../session";
+import { notifyUsers, reportManagerIds } from "../notify";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const fail = (error: string): Result => ({ ok: false, error });
@@ -35,6 +36,81 @@ export async function addClass(formData: FormData): Promise<Result> {
     return { ok: true };
   } catch {
     return fail("تعذر إنشاء الصف — ربما الاسم موجود");
+  }
+}
+
+// ============ المستويات الصفية ============
+
+/** إضافة مستوى صفّي — يُلحق بآخر الترتيب */
+export async function addGradeLevel(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("students");
+    const name = String(formData.get("name") ?? "").trim();
+    if (!name) return fail("اسم المستوى مطلوب");
+    const max = await prisma.gradeLevel.aggregate({ _max: { order: true } });
+    await prisma.gradeLevel.create({ data: { name, order: (max._max.order ?? 0) + 1 } });
+    revalidatePath("/admin/classes");
+    return { ok: true, message: "أُضيف المستوى" };
+  } catch {
+    return fail("تعذر الإضافة — ربما الاسم موجود");
+  }
+}
+
+/** إعادة تسمية مستوى */
+export async function renameGradeLevel(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("students");
+    const id = String(formData.get("id") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    if (!id || !name) return fail("الاسم مطلوب");
+    await prisma.gradeLevel.update({ where: { id }, data: { name } });
+    revalidatePath("/admin/classes");
+    return { ok: true, message: "حُدّث الاسم" };
+  } catch {
+    return fail("تعذر التحديث");
+  }
+}
+
+/** تحريك مستوى في الترتيب — dir: -1 أعلى / +1 أسفل */
+export async function moveGradeLevel(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("students");
+    const id = String(formData.get("id") ?? "");
+    const dir = Number(formData.get("dir"));
+    if (!id || ![1, -1].includes(dir)) return fail("بيانات غير صحيحة");
+    const levels = await prisma.gradeLevel.findMany({ orderBy: { order: "asc" } });
+    const i = levels.findIndex((l) => l.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= levels.length) return fail("لا يمكن التحريك");
+    await prisma.$transaction([
+      prisma.gradeLevel.update({ where: { id: levels[i]!.id }, data: { order: levels[j]!.order } }),
+      prisma.gradeLevel.update({ where: { id: levels[j]!.id }, data: { order: levels[i]!.order } }),
+    ]);
+    revalidatePath("/admin/classes");
+    return { ok: true };
+  } catch {
+    return fail("تعذر التحريك");
+  }
+}
+
+/** حذف مستوى — فارغ فقط (لا صفوف ولا كوتا مرتبطة) */
+export async function deleteGradeLevel(formData: FormData): Promise<Result> {
+  try {
+    await requirePerm("students");
+    const id = String(formData.get("id") ?? "");
+    if (!id) return fail("معرّف مفقود");
+    const refs = await prisma.gradeLevel.findUnique({
+      where: { id },
+      include: { _count: { select: { classes: true, gradeQuotas: true } } },
+    });
+    if (!refs) return fail("المستوى غير موجود");
+    if (refs._count.classes || refs._count.gradeQuotas)
+      return fail("المستوى مرتبط بصفوف أو كوتا — انقلها أولاً");
+    await prisma.gradeLevel.delete({ where: { id } });
+    revalidatePath("/admin/classes");
+    return { ok: true, message: "حُذف المستوى" };
+  } catch {
+    return fail("تعذر الحذف");
   }
 }
 
@@ -72,8 +148,8 @@ export async function addSubject(formData: FormData): Promise<Result> {
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return fail("اسم المادة مطلوب");
     await prisma.subject.create({ data: { name } });
-    revalidatePath("/admin/schedule");
     revalidatePath("/admin/subjects");
+    revalidatePath("/admin/assignments");
     return { ok: true };
   } catch {
     return fail("المادة موجودة مسبقاً");
@@ -127,8 +203,8 @@ export async function addTimetableSlot(formData: FormData): Promise<Result> {
         },
       });
     });
-    revalidatePath("/admin/schedule");
     revalidatePath("/admin/timetable");
+    revalidatePath("/admin/assignments");
     return { ok: true, message: "أُضيفت الخانة اليدوية" };
   } catch {
     return fail("تعذر إضافة الحصة — تحقق من عدم التعارض");
@@ -141,7 +217,6 @@ export async function deleteTimetableSlot(formData: FormData): Promise<Result> {
     const id = String(formData.get("id") ?? "");
     if (!id) return fail("معرّف مفقود");
     await prisma.timetableSlot.delete({ where: { id } });
-    revalidatePath("/admin/schedule");
     revalidatePath("/admin/timetable");
     return { ok: true, message: "حُذفت الخانة" };
   } catch {
@@ -384,6 +459,7 @@ export async function linkGuardianToStudent(
       update: { verified: true },
     });
     revalidatePath(`/admin/students`);
+    revalidatePath("/admin/users/guardians");
     return { ok: true, message: "رُبط ولي الأمر بالطالب" };
   } catch {
     return fail("تعذر الربط");
@@ -398,6 +474,7 @@ export async function unlinkGuardian(formData: FormData): Promise<Result> {
     if (!linkId) return fail("بيانات ناقصة");
     await prisma.guardianStudent.delete({ where: { id: linkId } });
     revalidatePath(`/admin/students`);
+    revalidatePath("/admin/users/guardians");
     return { ok: true, message: "فُكّ الربط" };
   } catch {
     return fail("تعذر فك الربط");
@@ -418,6 +495,7 @@ export async function toggleGuardianReports(
       data: { canViewReports: !link.canViewReports },
     });
     revalidatePath(`/admin/students`);
+    revalidatePath("/admin/users/guardians");
     return { ok: true, message: link.canViewReports ? "أُوقف عرض التقارير له" : "أُعيد عرض التقارير له" };
   } catch {
     return fail("تعذر التعديل");
@@ -660,6 +738,103 @@ export async function deleteTerm(formData: FormData): Promise<Result> {
     return { ok: true };
   } catch {
     return fail("تعذر حذف الفصل");
+  }
+}
+
+// ============ الأعوام الدراسية ============
+
+/** إنشاء عام دراسي — اختيارياً يُجعل حالاً فوراً */
+export async function addAcademicYear(formData: FormData): Promise<Result> {
+  try {
+    await requireRole("admin");
+    const name = String(formData.get("name") ?? "").trim();
+    const start = String(formData.get("startDate") ?? "");
+    const end = String(formData.get("endDate") ?? "");
+    const makeCurrent = formData.get("isCurrent") === "on";
+    if (!name || !start || !end) return fail("كل الحقول مطلوبة");
+    if (end <= start) return fail("تاريخ النهاية يجب أن يكون بعد البداية");
+    await prisma.$transaction(async (tx) => {
+      if (makeCurrent)
+        await tx.academicYear.updateMany({ where: { isCurrent: true }, data: { isCurrent: false } });
+      await tx.academicYear.create({
+        data: {
+          name, isCurrent: makeCurrent,
+          startDate: new Date(`${start}T00:00:00.000Z`),
+          endDate: new Date(`${end}T00:00:00.000Z`),
+        },
+      });
+    });
+    revalidatePath("/admin/settings");
+    return { ok: true, message: "أُنشئ العام الدراسي" };
+  } catch {
+    return fail("تعذر الإنشاء — ربما الاسم موجود");
+  }
+}
+
+/** تعديل بيانات عام — الاسم والحدود الزمنية فقط */
+export async function updateAcademicYear(formData: FormData): Promise<Result> {
+  try {
+    await requireRole("admin");
+    const id = String(formData.get("id") ?? "");
+    const name = String(formData.get("name") ?? "").trim();
+    const start = String(formData.get("startDate") ?? "");
+    const end = String(formData.get("endDate") ?? "");
+    if (!id || !name || !start || !end) return fail("كل الحقول مطلوبة");
+    if (end <= start) return fail("تاريخ النهاية يجب أن يكون بعد البداية");
+    await prisma.academicYear.update({
+      where: { id },
+      data: {
+        name,
+        startDate: new Date(`${start}T00:00:00.000Z`),
+        endDate: new Date(`${end}T00:00:00.000Z`),
+      },
+    });
+    revalidatePath("/admin/settings");
+    return { ok: true, message: "حُدّث العام" };
+  } catch {
+    return fail("تعذر التحديث");
+  }
+}
+
+/** تفعيل عام كـ«حالي» — يلغي الحالي السابق ذرّياً */
+export async function setCurrentAcademicYear(formData: FormData): Promise<Result> {
+  try {
+    await requireRole("admin");
+    const id = String(formData.get("id") ?? "");
+    if (!id) return fail("معرّف مفقود");
+    const exists = await prisma.academicYear.findUnique({ where: { id } });
+    if (!exists) return fail("العام غير موجود");
+    await prisma.$transaction([
+      prisma.academicYear.updateMany({ where: { isCurrent: true }, data: { isCurrent: false } }),
+      prisma.academicYear.update({ where: { id }, data: { isCurrent: true } }),
+    ]);
+    revalidatePath("/admin/settings");
+    return { ok: true, message: `«${exists.name}» هو العام الحالي الآن` };
+  } catch {
+    return fail("تعذر التفعيل");
+  }
+}
+
+/** حذف عام — فارغ تماماً فقط (لا صفوف/تسجيلات/إسنادات/فصول) */
+export async function deleteAcademicYear(formData: FormData): Promise<Result> {
+  try {
+    await requireRole("admin");
+    const id = String(formData.get("id") ?? "");
+    if (!id) return fail("معرّف مفقود");
+    const y = await prisma.academicYear.findUnique({
+      where: { id },
+      include: { _count: { select: { classes: true, enrollments: true, assignments: true, terms: true } } },
+    });
+    if (!y) return fail("العام غير موجود");
+    if (y.isCurrent) return fail("لا يمكن حذف العام الحالي — فعّل عاماً آخر أولاً");
+    const c = y._count;
+    if (c.classes || c.enrollments || c.assignments || c.terms)
+      return fail("العام مرتبط ببيانات (صفوف/فصول/إسنادات) — لا يمكن حذفه");
+    await prisma.academicYear.delete({ where: { id } });
+    revalidatePath("/admin/settings");
+    return { ok: true, message: "حُذف العام" };
+  } catch {
+    return fail("تعذر الحذف");
   }
 }
 
@@ -1081,12 +1256,33 @@ export async function importStudents(formData: FormData): Promise<Result> {
 /** تشغيل التلخيص الأسبوعي يدوياً — يولّد اللقطات ويدرج الإرسال لكل ولي أمر */
 export async function runWeeklyDigest(): Promise<Result> {
   try {
-    await requirePerm("reports");
+    const actor = await requirePerm("reports");
     const res = await generateWeeklyDigests({ requireCalendar: true });
     if (res.skippedNoCalendar)
       return fail("التقويم غير مهيأ — اضبط الفصول أو أيام التقويم أولاً في الإعدادات");
     if (!res.queued) return fail("لا أولياء أمور موثقين مرتبطين بطلاب");
+
+    await prisma.auditEvent.create({
+      data: {
+        actorId: actor.userId,
+        action: "reports.weekly_digest",
+        entityType: "WeeklyDigest",
+        entityId: `${res.rangeStart}:${res.rangeEnd}`,
+        after: { students: res.students, guardians: res.guardians, queued: res.queued },
+      },
+    });
+    const managers = await reportManagerIds();
+    await notifyUsers(managers, {
+      type: "weekly_digest",
+      title: "اكتمل توليد التلخيص الأسبوعي",
+      body: `${res.students} طالباً · ${res.guardians} ولياً · ${res.queued} رسالة مدرجة (${res.rangeStart} → ${res.rangeEnd})`,
+      href: "/admin/reports/outbox",
+    });
+
     after(() => drainOutbox(50));
+    revalidatePath("/admin/reports");
+    revalidatePath("/admin/reports/snapshots");
+    revalidatePath("/admin/reports/outbox");
     return {
       ok: true,
       message: `أُدرج ${res.queued} تلخيصاً وجارٍ إرسالها (${res.students} طالباً، ${res.rangeStart} → ${res.rangeEnd})`,
@@ -1161,6 +1357,16 @@ export async function sendAbsenceAlert(formData: FormData): Promise<Result> {
       });
       queued++;
     }
+    // إشعار داخلي للجرس — لكل ولي أمر له حساب
+    await notifyUsers(
+      guardians.map((g) => g.guardian.userId),
+      {
+        type: "absence_alert",
+        title: `غياب: ${student.fullName}`,
+        body: `${summary.status === "excused" ? "غياب بعذر" : "غياب"} بتاريخ ${dateStr}`,
+        href: "/parent",
+      },
+    );
     after(() => drainOutbox(10));
     return { ok: true, message: `أُدرج ${queued} تنبيهاً وجارٍ إرسالها` };
   } catch {

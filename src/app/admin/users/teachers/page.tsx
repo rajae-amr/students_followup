@@ -10,19 +10,49 @@ import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icons";
 import { TeacherAccountForm } from "@/components/teacher-account-form";
 import { TeacherImportForm } from "@/components/teacher-import-form";
-import { ActionsCell, StatusCell, TelegramCell, inputClass } from "../_shared";
+import { Pagination } from "@/components/ui/pagination";
+import { ActionsCell, StatusCell, TelegramCell, SearchBar, inputClass } from "../_shared";
 
-export default async function TeachersPage() {
+const PAGE_SIZE = 25;
+
+export default async function TeachersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>;
+}) {
   await requireRole("admin");
-  const [teachers, subjects, settings] = await Promise.all([
+  const { q = "", page: pageStr } = await searchParams;
+  const page = Math.max(1, Number(pageStr) || 1);
+  const query = q.trim();
+  const where = {
+    role: "teacher" as const,
+    ...(query && {
+      OR: [
+        { name: { contains: query, mode: "insensitive" as const } },
+        { username: { contains: query, mode: "insensitive" as const } },
+        { phone: { contains: query } },
+      ],
+    }),
+  };
+  const [teachers, total, subjects, settings, allTeachers] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "teacher" },
+      where,
       orderBy: { createdAt: "asc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
       include: { teacherProfile: { select: { defaultSubject: true } } },
     }),
+    prisma.user.count({ where }),
     prisma.subject.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     prisma.schoolSettings.findUnique({ where: { id: "school" } }),
+    // قائمة كاملة لقوائم «استبدال معلم» — مستقلة عن الترقيم
+    prisma.user.findMany({
+      where: { role: "teacher" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, isActive: true },
+    }),
   ]);
+  const pages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
@@ -84,11 +114,11 @@ export default async function TeachersPage() {
           <div className="grid w-full gap-2 sm:grid-cols-2">
             <select name="fromId" required className={inputClass}>
               <option value="">المعلم المغادر…</option>
-              {teachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {allTeachers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <select name="toId" required className={inputClass}>
               <option value="">المعلم البديل…</option>
-              {teachers.filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {allTeachers.filter((t) => t.isActive).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
         </FormWithResult>
@@ -103,8 +133,9 @@ export default async function TeachersPage() {
             <Icon.users className="h-4 w-4" />
           </span>
           المعلمون
-          <Badge tone="brand">{teachers.length}</Badge>
+          <Badge tone="brand">{total}</Badge>
         </h2>
+        <SearchBar q={query} placeholder="اسم المعلم أو اسم المستخدم أو الهاتف…" />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -158,9 +189,15 @@ export default async function TeachersPage() {
                   </tr>
                 </Fragment>
               ))}
+              {!teachers.length && (
+                <tr><td colSpan={7} className="py-8 text-center text-sm text-slate-400">
+                  {query ? `لا نتائج لـ«${query}»` : "لا معلمون بعد"}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
+        <Pagination page={page} pages={pages} total={total} params={{ q: query }} />
       </Card>
     </div>
   );

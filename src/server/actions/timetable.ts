@@ -17,7 +17,7 @@ const fail = (error: string): Result => ({ ok: false, error });
 const refresh = () => {
   revalidatePath("/admin/timetable");
   revalidatePath("/admin/timetable/setup");
-  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/assignments");
 };
 
 async function currentYear() {

@@ -17,6 +17,12 @@ const base = (props: P): P => ({
 });
 
 export const Icon = {
+  search: (p: P) => (
+    <svg {...base(p)}>
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.35-4.35" />
+    </svg>
+  ),
   students: (p: P) => (
     <svg {...base(p)}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />

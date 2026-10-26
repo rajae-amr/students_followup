@@ -49,6 +49,10 @@ export default async function ParentPlanViewPage({
       <PageHeader
         title={`الخطة الأسبوعية — ${pub.class.displayName ?? pub.class.name}`}
         subtitle={`أسبوع ${fmt(pub.weekStart)} – ${fmt(end)}`}
+        crumbs={[
+          { label: "الخطط الأسبوعية", href: "/parent/plans" },
+          { label: pub.class.displayName ?? pub.class.name },
+        ]}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

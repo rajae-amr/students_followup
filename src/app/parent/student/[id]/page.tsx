@@ -8,6 +8,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icons";
+import { FormWithResult } from "@/components/form-result";
+import { submitExcuse } from "@/server/actions/excuses";
 
 const DAY_TONE: Record<string, "emerald" | "red" | "amber" | "violet" | "slate"> = {
   present: "emerald",
@@ -94,6 +96,7 @@ export default async function StudentDetail({
         take: 20,
       },
       grades: {
+        where: { assessment: { publishedAt: { not: null } } },
         orderBy: { updatedAt: "desc" },
         take: 30,
         include: { assessment: { include: { subject: true } } },
@@ -130,20 +133,29 @@ export default async function StudentDetail({
     : [];
   const viewedIds = new Set(viewed.map((v) => v.reportSnapshotId));
 
+  // أعذار الطالب — لعرض حالتها وتقديم جديد لأيام الغياب
+  const excuses = await prisma.excuse.findMany({
+    where: { studentId: id },
+    select: { date: true, status: true, note: true },
+  });
+  const excuseByDay = new Map(excuses.map((e) => [e.date.toISOString().slice(0, 10), e]));
+  const EXCUSE_AR: Record<string, string> = { pending: "قيد المراجعة", approved: "مقبول", rejected: "مرفوض" };
+  const EXCUSE_TONE: Record<string, "amber" | "emerald" | "red"> = { pending: "amber", approved: "emerald", rejected: "red" };
+
   const presentDays = student.dailySummaries.filter((d) => d.status === "present").length;
   const absentDays = student.dailySummaries.filter((d) => d.status === "absent").length;
   const behaviorCount = student.behaviorEntries.length;
   const lastGrade = student.grades.find((g) => g.score != null);
 
-  // الدرجة الأكاديمية والتقدير محسوبان من درجات الاختبارات لكل مادة
+  // الدرجة الأكاديمية والتقدير محسوبان من درجات الاختبارات لكل مادة (الحالات غير normal تُستثنى)
   const statsBySubject = new Map<string, { pct: number; letter: string }>();
   {
-    const bySubj = new Map<string, { score: number | null; max: number; kind: string }[]>();
+    const bySubj = new Map<string, { score: number | null; max: number; kind: string; status: string }[]>();
     for (const g of student.grades) {
       const key = g.assessment.subject.name;
       bySubj.set(key, [
         ...(bySubj.get(key) ?? []),
-        { score: g.score, max: g.assessment.maxScore, kind: g.assessment.kind },
+        { score: g.score, max: g.assessment.maxScore, kind: g.assessment.kind, status: g.status },
       ]);
     }
     for (const [k, items] of bySubj) {
@@ -174,16 +186,12 @@ export default async function StudentDetail({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link
-        href="/parent"
-        className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
-      >
-        <Icon.arrowBack className="h-4 w-4" />
-        أبنائي
-      </Link>
-
       <PageHeader
         title={student.fullName}
+        crumbs={[
+          { label: "أبنائي", href: "/parent" },
+          { label: student.fullName },
+        ]}
         subtitle={[
           student.enrollments[0]?.class.displayName ??
             student.enrollments[0]?.class.name ??
@@ -281,10 +289,15 @@ export default async function StudentDetail({
                   <th className="text-center font-semibold">غياب</th>
                   <th className="text-center font-semibold">استئذان</th>
                   <th className="text-center font-semibold">تأخير</th>
+                  <th className="text-center font-semibold">العذر</th>
                 </tr>
               </thead>
               <tbody>
-                {student.dailySummaries.map((d) => (
+                {student.dailySummaries.map((d) => {
+                  const dayKey = d.date.toISOString().slice(0, 10);
+                  const ex = excuseByDay.get(dayKey);
+                  const excusable = ["absent", "partial", "late"].includes(d.status) && (!ex || ex.status === "rejected");
+                  return (
                   <tr key={d.id} className="border-b border-slate-50 last:border-0">
                     <td className="py-2.5 text-slate-600">{d.date.toLocaleDateString("ar")}</td>
                     <td>
@@ -301,8 +314,35 @@ export default async function StudentDetail({
                     <td className="text-center">
                       {d.lateCount ? <span className="font-bold text-violet-600">{d.lateCount}</span> : <span className="text-slate-300">—</span>}
                     </td>
+                    <td className="py-1.5 text-center">
+                      {ex ? (
+                        <span title={ex.note ?? undefined}>
+                          <Badge tone={EXCUSE_TONE[ex.status] ?? "amber"}>{EXCUSE_AR[ex.status] ?? ex.status}</Badge>
+                        </span>
+                      ) : excusable ? (
+                        <details className="group relative inline-block text-start">
+                          <summary className="cursor-pointer list-none rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700 transition hover:bg-amber-100">
+                            + عذر
+                          </summary>
+                          <div className="absolute z-20 mt-1 w-64 rounded-xl bg-white p-3 shadow-xl ring-1 ring-slate-200" style={{ insetInlineEnd: 0 }}>
+                            <FormWithResult action={submitExcuse} submitLabel="إرسال العذر" className="space-y-2">
+                              <input type="hidden" name="studentId" value={id} />
+                              <input type="hidden" name="date" value={dayKey} />
+                              <textarea
+                                name="reason" required rows={2} maxLength={500}
+                                placeholder="سبب الغياب (مرض، موعد طبي…)"
+                                className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-100"
+                              />
+                            </FormWithResult>
+                          </div>
+                        </details>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -371,7 +411,15 @@ export default async function StudentDetail({
                       </span>
                     </td>
                     <td className="text-center">
-                      {g.score != null ? (
+                      {g.status !== "normal" ? (
+                        <span className={`rounded-lg px-2 py-0.5 text-xs font-bold ${
+                          g.status === "absent" ? "bg-red-50 text-red-600"
+                          : g.status === "excused" ? "bg-amber-50 text-amber-700"
+                          : "bg-slate-100 text-slate-500"
+                        }`}>
+                          {g.status === "absent" ? "غائب" : g.status === "excused" ? "غائب بعذر" : "معفى"}
+                        </span>
+                      ) : g.score != null ? (
                         <span className="font-bold text-slate-800">
                           {g.score}
                           <span className="text-xs font-normal text-slate-400">/{g.assessment.maxScore}</span>

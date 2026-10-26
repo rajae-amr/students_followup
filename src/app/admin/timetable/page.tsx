@@ -282,3 +282,6 @@ export default async function TimetableAdmin({
     </div>
   );
 }
+
+export const metadata = { title: "الجدولة" };
+

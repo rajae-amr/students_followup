@@ -65,8 +65,8 @@ export function UserMenu({
       {open && (
         <div
           role="menu"
-          className={`absolute end-0 z-50 w-48 overflow-hidden rounded-xl bg-white py-1 shadow-lift ring-1 ring-slate-200 ${
-            up ? "bottom-full mb-2" : "top-full mt-2"
+          className={`absolute z-50 w-48 overflow-hidden rounded-xl bg-white py-1 shadow-lift ring-1 ring-slate-200 ${
+            up ? "bottom-full mb-2 start-0" : "top-full mt-2 end-0"
           }`}
         >
           <Link

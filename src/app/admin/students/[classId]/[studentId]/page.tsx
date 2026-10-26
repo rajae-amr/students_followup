@@ -84,8 +84,12 @@ export default async function StudentFilePage({
       <PageHeader
         title={student.fullName}
         subtitle={`${cls.displayName ?? cls.name}${student.legacyId != null ? ` · سجل قديم #${student.legacyId}` : ""}`}
-        backHref={`/admin/students/${cls.id}`}
-        backLabel={cls.displayName ?? cls.name}
+        crumbs={[
+          { label: "الشؤون الأكاديمية" },
+          { label: "الطلاب", href: "/admin/students" },
+          { label: cls.displayName ?? cls.name, href: `/admin/students/${cls.id}` },
+          { label: student.fullName },
+        ]}
         actions={
           <FormWithResult
             action={toggleStudent}
