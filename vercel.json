@@ -1,4 +1,4 @@
-﻿{
+{
   "crons": [
     {
       "path": "/api/cron/weekly",
@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sweep",
-      "schedule": "0 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }
